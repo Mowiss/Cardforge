@@ -222,6 +222,17 @@
   .floatmenu .dot{width:10px;height:10px;border-radius:50%; flex:0 0 auto}
   .dos-row{display:flex; align-items:stretch; gap:10px}
   .dos-prev{width:52px;height:72px;border-radius:6px;border:1px solid var(--line);background:#3a2f47;background-size:cover;background-position:center;flex:0 0 auto}
+  .print-modal{width:780px; max-width:95vw}
+  .print-grid{display:flex; gap:18px; align-items:stretch}
+  .print-settings{width:300px; flex:0 0 auto}
+  .print-preview-wrap{flex:1; min-width:0; display:flex; flex-direction:column; gap:8px}
+  .pp-toolbar{display:flex; align-items:center; justify-content:center; gap:12px; color:var(--muted); font-size:12px}
+  .pp-stage{flex:1; background:var(--canvas); border:1px solid var(--line); border-radius:10px; display:flex; align-items:center; justify-content:center; padding:14px; min-height:360px; overflow:auto}
+  .pp-page{position:relative; background:#fff; box-shadow:0 8px 26px rgba(0,0,0,.45)}
+  .pp-card{position:absolute; overflow:hidden; background:#fff}
+  .pp-card .stage{transform-origin:top left; position:absolute; top:0; left:0}
+  .pp-crop{position:absolute; background:#000}
+  @media (max-width:720px){ .print-grid{flex-wrap:wrap} .print-settings{width:100%} }
 
   .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:100}
   .modal-bg.show{display:flex}
@@ -242,13 +253,13 @@
     <div class="brand"><span class="logo">🎴</span><b>Carte Forge</b><span class="tag">atelier de cartes</span></div>
     <input id="projName" class="proj-name" placeholder="Nom du projet">
     <div class="spacer"></div>
-    <button class="btn ghost sm" id="btnNewCard">🃏 Carte</button>
+    <button class="btn ghost sm" id="printBtn">⎙ Print</button>
     <div class="menu-wrap">
-      <button class="btn primary sm" id="gearBtn" title="Menu">⛯ Menu</button>
+      <button class="btn primary sm" id="gearBtn" title="Paramètre">⛯ Paramètre</button>
       <div class="menu" id="gearMenu">
         <button class="menu-item" id="mSave">💾 Sauver JSON</button>
         <button class="menu-item" id="mOpen">📂 Ouvrir JSON</button>
-        <button class="menu-item" id="mPng">🖼️ Export PNG</button>
+        <button class="menu-item" id="mPng">🖼️ Export PNG (carte)</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="mInstall">⬇️ Installer l'application</button>
       </div>
@@ -296,7 +307,7 @@
           <button class="btn ghost sm danger" id="clearBg" style="width:100%">Retirer le fond image</button>
         </div>
         <div class="sec">
-          <h3>Format &amp; marge</h3>
+          <h3>Format</h3>
           <div class="field">
             <label>Format de carte</label>
             <select id="cardSize">
@@ -306,10 +317,6 @@
               <option value="560x560">Carré — 70×70 mm</option>
               <option value="360x544">Mini — 45×68 mm</option>
             </select>
-          </div>
-          <div class="field">
-            <label>Marge (guide) : <span id="marginVal">28</span> px</label>
-            <input type="range" id="margin" min="0" max="120" value="28">
           </div>
         </div>
       </aside>
@@ -382,8 +389,51 @@
   </div>
 </div>
 
+<div class="modal-bg" id="printModal">
+  <div class="modal print-modal">
+    <h3>Impression</h3>
+    <div class="print-grid">
+      <div class="print-settings">
+        <div class="row">
+          <div class="field"><label>Format de page</label>
+            <select id="pgFormat"><option value="A4">A4 (210×297)</option><option value="Letter">Letter (216×279)</option></select>
+          </div>
+          <div class="field"><label>Orientation</label>
+            <select id="pgOrient"><option value="portrait">Portrait</option><option value="landscape">Paysage</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Marge de page : <span id="pgMarginV">10</span> mm</label><input type="range" id="pgMargin" min="0" max="30" value="10"></div>
+          <div class="field"><label>Espacement : <span id="pgGapV">3</span> mm</label><input type="range" id="pgGap" min="0" max="15" value="3"></div>
+        </div>
+        <div class="field"><label>Marge de sécurité (guide sur la carte) : <span id="marginVal">28</span> px</label>
+          <input type="range" id="margin" min="0" max="120" value="28"></div>
+        <div class="toggle" style="margin:6px 0 4px">
+          <span class="hint">Repères de coupe (marqueurs d'impression)</span>
+          <div class="switch on" id="cropSw"><i></i></div>
+        </div>
+        <p class="hint" id="printInfo" style="margin:8px 0 0"></p>
+      </div>
+      <div class="print-preview-wrap">
+        <div class="pp-toolbar">
+          <button class="btn sm" id="ppPrev">‹</button>
+          <span>Page <span id="ppPage">1</span> / <span id="ppCount">1</span></span>
+          <button class="btn sm" id="ppNext">›</button>
+        </div>
+        <div class="pp-stage" id="printPreview"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost sm" id="printCancel">Fermer</button>
+      <button class="btn sm" id="printPNG">⎙ Print to PNG</button>
+      <button class="btn primary sm" id="printPDF">⎙ Print to PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* =========================================================================
    Carte Forge — état + logique. Tout est mono-fichier, vanilla JS.
@@ -417,9 +467,14 @@ function blankCard(name){
 }
 function newProject(){
   project = { name:'Nouveau projet', card:{w:504,h:704}, margin:28,
+              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true },
               sharedBack:null, decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
+function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true }; }
+function pageDims(){ ensurePrint(); const P=project.print;
+  let w=P.pageFormat==='Letter'?215.9:210, h=P.pageFormat==='Letter'?279.4:297;
+  if(P.orient==='landscape'){ const t=w; w=h; h=t; } return {w,h}; }
 function currentCard(){ return project.cards.find(c=>c.id===ui.cardId) || project.cards[0]; }
 function selectedModule(){ const c=currentCard(); return c && c.modules.find(m=>m.id===ui.sel); }
 
@@ -1088,6 +1143,112 @@ function strokeCardBorder(ctx,card,W,H,rad){
   ctx.lineWidth=cbw; ctx.strokeStyle=card.borderColor||'#241c2e';
   roundRect(ctx, cbw/2, cbw/2, W-cbw, H-cbw, Math.max(0, rad-cbw/2)); ctx.stroke();
 }
+
+/* =========================================================================
+   IMPRESSION — planches PDF / PNG (mise en page des cartes à leur taille réelle)
+   ========================================================================= */
+const PX_PER_MM=8;                 // px logiques d'une carte par mm
+function renderCard(card,side,scale){ return new Promise(res=>renderCardToCanvas(card,side,scale,res)); }
+function printLayout(){
+  ensurePrint(); const P=project.print; const pg=pageDims();
+  const cwmm=project.card.w/PX_PER_MM, chmm=project.card.h/PX_PER_MM;
+  const cols=Math.max(1,Math.floor((pg.w-2*P.pageMargin+P.gap)/(cwmm+P.gap)));
+  const rows=Math.max(1,Math.floor((pg.h-2*P.pageMargin+P.gap)/(chmm+P.gap)));
+  return { pg, cwmm, chmm, cols, rows, per:Math.max(1,cols*rows) };
+}
+function updatePrintInfo(){
+  const L=printLayout(); const n=project.cards.length; const pages=Math.max(1,Math.ceil(n/L.per));
+  $('#printInfo').textContent=`${n} carte(s) · ${L.cols}×${L.rows} = ${L.per} par page · ${pages} page(s).`;
+}
+async function buildPrintPages(){
+  const cards=project.cards; if(!cards.length){ toast('Aucune carte à imprimer'); return null; }
+  const L=printLayout(); const P=project.print; const DPMM=12, scale=DPMM/PX_PER_MM;
+  const canvases=[]; for(const c of cards) canvases.push(await renderCard(c,'recto',scale));
+  const pages=[]; const totalPages=Math.ceil(cards.length/L.per);
+  for(let p=0;p<totalPages;p++){
+    const cv=document.createElement('canvas'); cv.width=Math.round(L.pg.w*DPMM); cv.height=Math.round(L.pg.h*DPMM);
+    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+    for(let s=0;s<L.per;s++){ const gi=p*L.per+s; if(gi>=cards.length) break;
+      const col=s%L.cols, row=Math.floor(s/L.cols);
+      const x=(P.pageMargin+col*(L.cwmm+P.gap))*DPMM, y=(P.pageMargin+row*(L.chmm+P.gap))*DPMM;
+      const w=L.cwmm*DPMM, h=L.chmm*DPMM;
+      ctx.drawImage(canvases[gi],x,y,w,h);
+      if(P.cropMarks) drawCropMarks(ctx,x,y,w,h,DPMM);
+    }
+    pages.push(cv);
+  }
+  return pages;
+}
+function drawCropMarks(ctx,x,y,w,h,DPMM){
+  const Ln=4*DPMM, O=1.2*DPMM; ctx.strokeStyle='#000'; ctx.lineWidth=Math.max(1,DPMM*0.12);
+  [[x,y,-1,-1],[x+w,y,1,-1],[x,y+h,-1,1],[x+w,y+h,1,1]].forEach(([cx,cy,sx,sy])=>{
+    ctx.beginPath(); ctx.moveTo(cx+sx*O,cy); ctx.lineTo(cx+sx*(O+Ln),cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,cy+sy*O); ctx.lineTo(cx,cy+sy*(O+Ln)); ctx.stroke();
+  });
+}
+async function printPNG(){
+  const pages=await buildPrintPages(); if(!pages) return;
+  const base=(project.name||'projet').replace(/[^\w\-]+/g,'_');
+  pages.forEach((cv,i)=>cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+    a.download=pages.length>1?`${base}_planche_${i+1}.png`:`${base}_planche.png`; a.click(); }));
+  toast(pages.length>1?`${pages.length} planches PNG exportées`:'Planche PNG exportée');
+}
+async function printPDF(){
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('Export PDF indisponible (jsPDF non chargé — hors ligne ?)'); return; }
+  const pages=await buildPrintPages(); if(!pages) return;
+  const P=project.print; const pg=pageDims(); const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:'mm', format:P.pageFormat==='Letter'?'letter':'a4', orientation:P.orient});
+  pages.forEach((cv,i)=>{ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pg.w,pg.h); });
+  pdf.save(`${(project.name||'projet').replace(/[^\w\-]+/g,'_')}_impression.pdf`);
+  toast('PDF généré');
+}
+function openPrintModal(){
+  ensurePrint(); const P=project.print;
+  $('#pgFormat').value=P.pageFormat; $('#pgOrient').value=P.orient;
+  $('#pgMargin').value=P.pageMargin; $('#pgMarginV').textContent=P.pageMargin;
+  $('#pgGap').value=P.gap; $('#pgGapV').textContent=P.gap;
+  $('#cropSw').classList.toggle('on',!!P.cropMarks);
+  $('#margin').value=project.margin; $('#marginVal').textContent=project.margin;
+  ui.ppPage=1;
+  $('#printModal').classList.add('show');
+  requestAnimationFrame(()=>{ updatePrintInfo(); renderPrintPreview(); });
+}
+function printChanged(){ save(); updatePrintInfo(); renderPrintPreview(); }
+function addCropDivs(page,x,y,w,h,sc){
+  const Ln=4*sc, O=1.2*sc, T=1;
+  const seg=(l,t,ww,hh)=>{ const d=document.createElement('div'); d.className='pp-crop';
+    d.style.left=l+'px'; d.style.top=t+'px'; d.style.width=ww+'px'; d.style.height=hh+'px'; page.appendChild(d); };
+  [[x,y,-1,-1],[x+w,y,1,-1],[x,y+h,-1,1],[x+w,y+h,1,1]].forEach(([cx,cy,sx,sy])=>{
+    seg(sx<0?cx-O-Ln:cx+O, cy-T/2, Ln, T);
+    seg(cx-T/2, sy<0?cy-O-Ln:cy+O, T, Ln);
+  });
+}
+function renderPrintPreview(){
+  const host=$('#printPreview'); if(!host) return; host.innerHTML='';
+  const cards=project.cards; const L=printLayout(); const P=project.print;
+  const pages=Math.max(1,Math.ceil(cards.length/L.per));
+  ui.ppPage=Math.min(Math.max(1,ui.ppPage||1),pages);
+  $('#ppPage').textContent=ui.ppPage; $('#ppCount').textContent=pages;
+  if(!cards.length){ host.innerHTML='<div class="empty-note">Aucune carte à imprimer.</div>'; return; }
+  const avW=host.clientWidth-28, avH=host.clientHeight-28;
+  const sc=Math.max(0.2, Math.min(avW/L.pg.w, avH/L.pg.h));  // px par mm (aperçu)
+  const page=document.createElement('div'); page.className='pp-page';
+  page.style.width=(L.pg.w*sc)+'px'; page.style.height=(L.pg.h*sc)+'px';
+  const start=(ui.ppPage-1)*L.per;
+  for(let s=0;s<L.per;s++){ const gi=start+s; if(gi>=cards.length) break;
+    const c=cards[gi], col=s%L.cols, row=Math.floor(s/L.cols);
+    const xmm=P.pageMargin+col*(L.cwmm+P.gap), ymm=P.pageMargin+row*(L.chmm+P.gap);
+    const el=document.createElement('div'); el.className='pp-card';
+    el.style.left=(xmm*sc)+'px'; el.style.top=(ymm*sc)+'px';
+    el.style.width=(L.cwmm*sc)+'px'; el.style.height=(L.chmm*sc)+'px';
+    const inner=document.createElement('div'); inner.className='stage'; el.appendChild(inner);
+    buildStage(inner,c,false); inner.style.transform=`scale(${(L.cwmm*sc)/project.card.w})`;
+    page.appendChild(el);
+    if(P.cropMarks) addCropDivs(page, xmm*sc, ymm*sc, L.cwmm*sc, L.chmm*sc, sc);
+  }
+  host.appendChild(page);
+}
+
 function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
@@ -1150,6 +1311,7 @@ function setEditSide(side){
 function hydrate(){
   $('#projName').value=project.name;
   $('#cardSize').value=project.card.w+'x'+project.card.h;
+  ensurePrint();
   $('#margin').value=project.margin; $('#marginVal').textContent=project.margin;
   refreshCardSelectors();
   renderProject();
@@ -1175,18 +1337,31 @@ function bind(){
   $('#cardBorderW').oninput=e=>{ currentCard().borderW=+e.target.value; $('#cbW').textContent=e.target.value; save(); refreshStage(); };
   $('#cardBorderColor').oninput=e=>{ currentCard().borderColor=e.target.value; save(); refreshStage(); };
   $('#cardRadius').oninput=e=>{ currentCard().radius=+e.target.value; $('#cbR').textContent=e.target.value; save(); refreshStage(); };
-  // format + marge
-  $('#cardSize').onchange=e=>{ const [w,h]=e.target.value.split('x').map(Number); project.card={w,h}; save(); refreshStage(); fitZoom(); };
-  $('#margin').oninput=e=>{ project.margin=+e.target.value; $('#marginVal').textContent=e.target.value; save(); refreshStage(); };
+  // format
+  $('#cardSize').onchange=e=>{ const [w,h]=e.target.value.split('x').map(Number); project.card={w,h}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
+  // marge de sécurité (dans Impression)
+  $('#margin').oninput=e=>{ project.margin=+e.target.value; $('#marginVal').textContent=e.target.value; save(); if(isEditing()) refreshStage(); updatePrintInfo(); };
   // calques (ordre des modules)
   $('#layerUp').onclick=()=>{ const m=selectedModule(); if(!m){ toast('Sélectionne un module'); return; } m.z=Math.max(...currentCard().modules.map(x=>x.z))+1; save(); refreshStage(); };
   $('#layerDown').onclick=()=>{ const m=selectedModule(); if(!m){ toast('Sélectionne un module'); return; } m.z=Math.min(...currentCard().modules.map(x=>x.z))-1; save(); refreshStage(); };
   // zoom à la molette (Ctrl/Cmd + molette) — sans bouton
   $('#canvas').addEventListener('wheel',e=>{ if(!(e.ctrlKey||e.metaKey)) return; e.preventDefault(); ui.zoom=clamp(ui.zoom*(e.deltaY<0?1.1:0.9),.15,3); applyZoom(); }, {passive:false});
   // cartes / projet
-  $('#btnNewCard').onclick=newCard; $('#btnNewCard2').onclick=newCard;
+  $('#btnNewCard2').onclick=newCard;
   $('#btnNewDeck').onclick=()=>openDeckModal(null);
   $('#cardName').oninput=e=>{ currentCard().name=e.target.value; save(); };
+  // impression
+  $('#printBtn').onclick=openPrintModal;
+  $('#printCancel').onclick=()=>$('#printModal').classList.remove('show');
+  $('#pgFormat').onchange=e=>{ ensurePrint(); project.print.pageFormat=e.target.value; ui.ppPage=1; printChanged(); };
+  $('#pgOrient').onchange=e=>{ ensurePrint(); project.print.orient=e.target.value; ui.ppPage=1; printChanged(); };
+  $('#pgMargin').oninput=e=>{ ensurePrint(); project.print.pageMargin=+e.target.value; $('#pgMarginV').textContent=e.target.value; printChanged(); };
+  $('#pgGap').oninput=e=>{ ensurePrint(); project.print.gap=+e.target.value; $('#pgGapV').textContent=e.target.value; printChanged(); };
+  $('#cropSw').onclick=()=>{ ensurePrint(); project.print.cropMarks=!project.print.cropMarks; $('#cropSw').classList.toggle('on',project.print.cropMarks); printChanged(); };
+  $('#ppPrev').onclick=()=>{ ui.ppPage=(ui.ppPage||1)-1; renderPrintPreview(); };
+  $('#ppNext').onclick=()=>{ ui.ppPage=(ui.ppPage||1)+1; renderPrintPreview(); };
+  $('#printPNG').onclick=printPNG;
+  $('#printPDF').onclick=printPDF;
   // menu ⛯ (fichiers + installation)
   const gm=$('#gearMenu');
   $('#gearBtn').onclick=e=>{ e.stopPropagation(); gm.classList.toggle('show'); };
