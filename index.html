@@ -477,6 +477,17 @@
   </div>
 </div>
 
+<div class="modal-bg" id="infoModal">
+  <div class="modal" style="width:420px">
+    <h3 id="infoTitle">Installer l'application</h3>
+    <p class="hint" id="infoBody" style="font-size:13px; line-height:1.6; color:var(--ink)"></p>
+    <div class="actions">
+      <button class="btn ghost sm" id="infoClose">Fermer</button>
+      <button class="btn primary sm" id="infoAction" style="display:none"></button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="cropModal">
   <div class="modal" style="width:auto; max-width:96vw">
     <h3>Recadrer l'image</h3>
@@ -1604,6 +1615,7 @@ function bind(){
   };
   // fenêtres maison (ask)
   $('#askOk').onclick=()=>askClose(true);
+  $('#infoClose').onclick=closeInfo;
   bindCrop();
   $('#askCancel').onclick=()=>askClose(false);
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
@@ -1638,8 +1650,12 @@ function setupFaviconAndManifest(){
     x.fillStyle='#241c2e'; roundRect(x,0,0,px,px,px*0.22); x.fill();
     x.font=`${Math.round(px*0.6)}px serif`; x.textAlign='center'; x.textBaseline='middle';
     x.fillText('🎴',px/2,px*0.56); return c.toDataURL('image/png'); };
+  // URL absolue de la page (le manifeste est un blob: → start_url/scope DOIVENT être absolus)
+  const here=location.href.split('#')[0].split('?')[0];
+  const dir=here.substring(0, here.lastIndexOf('/')+1);
   const manifest={ name:'Carte Forge', short_name:'Carte Forge', description:'Atelier de création de cartes de jeu',
-    start_url:'.', scope:'.', display:'standalone', background_color:'#241c2e', theme_color:'#241c2e',
+    id:here, start_url:here, scope:dir, display:'standalone', orientation:'any',
+    background_color:'#241c2e', theme_color:'#241c2e',
     icons:[{src:mkIcon(192),sizes:'192x192',type:'image/png',purpose:'any'},
            {src:mkIcon(512),sizes:'512x512',type:'image/png',purpose:'any maskable'}] };
   try{ const m=document.createElement('link'); m.rel='manifest';
@@ -1648,11 +1664,33 @@ function setupFaviconAndManifest(){
 }
 window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredPrompt=e; });
 window.addEventListener('appinstalled',()=>{ deferredPrompt=null; toast('Application installée 🎴'); });
-async function installApp(){
-  if(deferredPrompt){ deferredPrompt.prompt(); const {outcome}=await deferredPrompt.userChoice;
-    deferredPrompt=null; toast(outcome==='accepted'?'Installation lancée 🎴':'Installation annulée'); return; }
-  if(window.matchMedia('(display-mode: standalone)').matches){ toast('Application déjà installée ✓'); return; }
-  toast("Installe via le menu du navigateur → « Installer l'application » / « Ajouter à l'écran d'accueil »");
+function showInfo(title, bodyHtml, action){
+  $('#infoTitle').textContent=title; $('#infoBody').innerHTML=bodyHtml;
+  const b=$('#infoAction');
+  if(action){ b.style.display=''; b.textContent=action.label; b.onclick=action.fn; }
+  else b.style.display='none';
+  $('#infoModal').classList.add('show');
+}
+function closeInfo(){ $('#infoModal').classList.remove('show'); }
+async function doInstallPrompt(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt(); const {outcome}=await deferredPrompt.userChoice; deferredPrompt=null;
+  closeInfo(); toast(outcome==='accepted'?'Installation lancée 🎴':'Installation annulée');
+}
+function installApp(){
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if(standalone){ showInfo('Application installée', "L'application est déjà installée ✓ — lance-la depuis ton bureau ou ton écran d'accueil."); return; }
+  if(deferredPrompt){ showInfo("Installer l'application", "Ton navigateur peut installer Carte Forge comme une vraie application (fenêtre dédiée, icône, hors ligne).", {label:'Installer maintenant', fn:doInstallPrompt}); return; }
+  if(location.protocol==='file:'){
+    showInfo('Installation impossible en local',
+      "Le fichier est ouvert en <b>local (file://)</b>, et les navigateurs interdisent d'installer un fichier local.<br><br>"+
+      "Pour l'installer : place ce fichier sur un hébergement (ou un petit serveur local) et ouvre-le via une adresse <b>http(s)</b> — le bouton d'installation apparaîtra alors.<br><br>"+
+      "Bonne nouvelle : l'appli fonctionne déjà parfaitement telle quelle, <b>y compris hors ligne</b>. L'installation n'apporte qu'une fenêtre dédiée et une icône.");
+    return;
+  }
+  showInfo("Installer l'application",
+    "Utilise l'icône d'installation dans la <b>barre d'adresse</b> (une icône ⊕ ou un petit écran, à droite de l'URL), ou le menu du navigateur → « Installer Carte Forge ».<br><br>"+
+    "Sur iPhone/iPad (Safari) : bouton <b>Partager</b> → « Sur l'écran d'accueil ».");
 }
 
 /* ---------- Démarrage ---------- */
