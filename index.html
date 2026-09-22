@@ -232,6 +232,7 @@
   .pp-card{position:absolute; overflow:hidden; background:#fff}
   .pp-card .stage{transform-origin:top left; position:absolute; top:0; left:0}
   .pp-crop{position:absolute; background:#000}
+  .pp-badge{position:absolute; top:4px; left:4px; background:var(--accent); color:var(--accent-ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; z-index:5}
   @media (max-width:720px){ .print-grid{flex-wrap:wrap} .print-settings{width:100%} }
 
   .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:100}
@@ -395,6 +396,14 @@
     <div class="print-grid">
       <div class="print-settings">
         <div class="row">
+          <div class="field"><label>Paquet à imprimer</label>
+            <select id="pgDeck"></select>
+          </div>
+          <div class="field"><label>Faces</label>
+            <select id="pgFaces"><option value="recto">Recto seul</option><option value="duplex">Recto + verso</option></select>
+          </div>
+        </div>
+        <div class="row">
           <div class="field"><label>Format de page</label>
             <select id="pgFormat"><option value="A4">A4 (210×297)</option><option value="Letter">Letter (216×279)</option></select>
           </div>
@@ -405,6 +414,9 @@
         <div class="row">
           <div class="field"><label>Marge de page : <span id="pgMarginV">10</span> mm</label><input type="range" id="pgMargin" min="0" max="30" value="10"></div>
           <div class="field"><label>Espacement : <span id="pgGapV">3</span> mm</label><input type="range" id="pgGap" min="0" max="15" value="3"></div>
+        </div>
+        <div class="field"><label>Reliure recto/verso</label>
+          <select id="pgFlip"><option value="long">Bord long (défaut)</option><option value="short">Bord court</option></select>
         </div>
         <div class="field"><label>Marge de sécurité (guide sur la carte) : <span id="marginVal">28</span> px</label>
           <input type="range" id="margin" min="0" max="120" value="28"></div>
@@ -467,11 +479,12 @@ function blankCard(name){
 }
 function newProject(){
   project = { name:'Nouveau projet', card:{w:504,h:704}, margin:28,
-              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true },
+              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long' },
               sharedBack:null, decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
-function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true }; }
+function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true };
+  const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; }
 function pageDims(){ ensurePrint(); const P=project.print;
   let w=P.pageFormat==='Letter'?215.9:210, h=P.pageFormat==='Letter'?279.4:297;
   if(P.orient==='landscape'){ const t=w; w=h; h=t; } return {w,h}; }
@@ -1074,10 +1087,13 @@ function stepCard(dir){
    ========================================================================= */
 function readImage(file,cb){ if(!file) return; const r=new FileReader(); r.onload=()=>cb(r.result); r.readAsDataURL(file); }
 
+function stampNow(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}`; }
+function projSlug(){ return (project.name||'projet').replace(/[^\w\-]+/g,'_'); }
 function saveJson(){
   const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=(project.name||'projet').replace(/[^\w\-]+/g,'_')+'.json'; a.click();
+  a.download=`${projSlug()}_${stampNow()}.json`; a.click();
   toast('Projet exporté en JSON');
 }
 function loadJsonFile(file){
@@ -1152,27 +1168,57 @@ function renderCard(card,side,scale){ return new Promise(res=>renderCardToCanvas
 function printLayout(){
   ensurePrint(); const P=project.print; const pg=pageDims();
   const cwmm=project.card.w/PX_PER_MM, chmm=project.card.h/PX_PER_MM;
-  const cols=Math.max(1,Math.floor((pg.w-2*P.pageMargin+P.gap)/(cwmm+P.gap)));
-  const rows=Math.max(1,Math.floor((pg.h-2*P.pageMargin+P.gap)/(chmm+P.gap)));
-  return { pg, cwmm, chmm, cols, rows, per:Math.max(1,cols*rows) };
+  const availW=pg.w-2*P.pageMargin, availH=pg.h-2*P.pageMargin;
+  const cols=Math.max(1,Math.floor((availW+P.gap)/(cwmm+P.gap)));
+  const rows=Math.max(1,Math.floor((availH+P.gap)/(chmm+P.gap)));
+  const gridW=cols*cwmm+(cols-1)*P.gap, gridH=rows*chmm+(rows-1)*P.gap;
+  const ox=(pg.w-gridW)/2, oy=(pg.h-gridH)/2;    // grille centrée → marges symétriques (découpe + recto/verso)
+  return { pg, cwmm, chmm, cols, rows, per:Math.max(1,cols*rows), ox, oy };
+}
+// position d'une carte (mm) selon la face — le verso est le miroir exact autour du centre de la page
+function slotPos(L, s, kind){
+  const P=project.print; const col=s%L.cols, row=Math.floor(s/L.cols);
+  let x=L.ox+col*(L.cwmm+P.gap), y=L.oy+row*(L.chmm+P.gap);
+  if(kind==='verso'){
+    if(P.flip==='short') y = L.pg.h - y - L.chmm;   // reliure bord court → miroir vertical
+    else                 x = L.pg.w - x - L.cwmm;   // reliure bord long  → miroir horizontal
+  }
+  return { x, y };
+}
+function selectedPrintCards(){
+  ensurePrint(); const dk=project.print.deck;
+  if(!dk || dk==='all') return project.cards;
+  if(dk==='none') return project.cards.filter(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId));
+  return cardsOfDeck(dk);
+}
+function printSheets(){
+  const cards=selectedPrintCards(); const L=printLayout(); const P=project.print;
+  const totalPages=Math.max(1,Math.ceil(cards.length/L.per));
+  const sheets=[];
+  for(let p=0;p<totalPages;p++){ sheets.push({kind:'recto',page:p}); if(P.faces==='duplex') sheets.push({kind:'verso',page:p}); }
+  return { cards, L, sheets };
 }
 function updatePrintInfo(){
-  const L=printLayout(); const n=project.cards.length; const pages=Math.max(1,Math.ceil(n/L.per));
-  $('#printInfo').textContent=`${n} carte(s) · ${L.cols}×${L.rows} = ${L.per} par page · ${pages} page(s).`;
+  const {cards,L,sheets}=printSheets();
+  const faces = project.print.faces==='duplex' ? 'recto+verso' : 'recto';
+  $('#printInfo').textContent=`${cards.length} carte(s) · ${L.cols}×${L.rows} par page · ${sheets.length} page(s) (${faces}).`;
 }
 async function buildPrintPages(){
-  const cards=project.cards; if(!cards.length){ toast('Aucune carte à imprimer'); return null; }
-  const L=printLayout(); const P=project.print; const DPMM=12, scale=DPMM/PX_PER_MM;
-  const canvases=[]; for(const c of cards) canvases.push(await renderCard(c,'recto',scale));
-  const pages=[]; const totalPages=Math.ceil(cards.length/L.per);
-  for(let p=0;p<totalPages;p++){
+  const {cards,L,sheets}=printSheets();
+  if(!cards.length){ toast('Aucune carte à imprimer'); return null; }
+  const P=project.print; const DPMM=12, scale=DPMM/PX_PER_MM;
+  const frontCache={}, backCache={};
+  const pages=[];
+  for(const sh of sheets){
     const cv=document.createElement('canvas'); cv.width=Math.round(L.pg.w*DPMM); cv.height=Math.round(L.pg.h*DPMM);
     const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height);
-    for(let s=0;s<L.per;s++){ const gi=p*L.per+s; if(gi>=cards.length) break;
-      const col=s%L.cols, row=Math.floor(s/L.cols);
-      const x=(P.pageMargin+col*(L.cwmm+P.gap))*DPMM, y=(P.pageMargin+row*(L.chmm+P.gap))*DPMM;
-      const w=L.cwmm*DPMM, h=L.chmm*DPMM;
-      ctx.drawImage(canvases[gi],x,y,w,h);
+    for(let s=0;s<L.per;s++){ const gi=sh.page*L.per+s; if(gi>=cards.length) break;
+      const c=cards[gi]; const pos=slotPos(L,s,sh.kind);
+      const x=pos.x*DPMM, y=pos.y*DPMM, w=L.cwmm*DPMM, h=L.chmm*DPMM;
+      let cardCv;
+      if(sh.kind==='verso'){ if(!backCache[c.id]) backCache[c.id]=await renderCard(c,'verso',scale); cardCv=backCache[c.id]; }
+      else { if(!frontCache[c.id]) frontCache[c.id]=await renderCard(c,'recto',scale); cardCv=frontCache[c.id]; }
+      ctx.drawImage(cardCv,x,y,w,h);
       if(P.cropMarks) drawCropMarks(ctx,x,y,w,h,DPMM);
     }
     pages.push(cv);
@@ -1188,9 +1234,9 @@ function drawCropMarks(ctx,x,y,w,h,DPMM){
 }
 async function printPNG(){
   const pages=await buildPrintPages(); if(!pages) return;
-  const base=(project.name||'projet').replace(/[^\w\-]+/g,'_');
+  const base=`${projSlug()}_${stampNow()}`;
   pages.forEach((cv,i)=>cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b);
-    a.download=pages.length>1?`${base}_planche_${i+1}.png`:`${base}_planche.png`; a.click(); }));
+    a.download=pages.length>1?`${base}_p${i+1}.png`:`${base}.png`; a.click(); }));
   toast(pages.length>1?`${pages.length} planches PNG exportées`:'Planche PNG exportée');
 }
 async function printPDF(){
@@ -1199,11 +1245,18 @@ async function printPDF(){
   const P=project.print; const pg=pageDims(); const {jsPDF}=window.jspdf;
   const pdf=new jsPDF({unit:'mm', format:P.pageFormat==='Letter'?'letter':'a4', orientation:P.orient});
   pages.forEach((cv,i)=>{ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pg.w,pg.h); });
-  pdf.save(`${(project.name||'projet').replace(/[^\w\-]+/g,'_')}_impression.pdf`);
+  pdf.save(`${projSlug()}_${stampNow()}_impression.pdf`);
   toast('PDF généré');
 }
 function openPrintModal(){
   ensurePrint(); const P=project.print;
+  // liste des paquets
+  const opts=['<option value="all">Toutes les cartes</option>']
+    .concat(project.decks.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`));
+  if(project.cards.some(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId))) opts.push('<option value="none">Hors paquet</option>');
+  $('#pgDeck').innerHTML=opts.join('');
+  if(!['all','none'].includes(P.deck) && !project.decks.some(d=>d.id===P.deck)) P.deck='all';
+  $('#pgDeck').value=P.deck; $('#pgFaces').value=P.faces; $('#pgFlip').value=P.flip;
   $('#pgFormat').value=P.pageFormat; $('#pgOrient').value=P.orient;
   $('#pgMargin').value=P.pageMargin; $('#pgMarginV').textContent=P.pageMargin;
   $('#pgGap').value=P.gap; $('#pgGapV').textContent=P.gap;
@@ -1225,24 +1278,30 @@ function addCropDivs(page,x,y,w,h,sc){
 }
 function renderPrintPreview(){
   const host=$('#printPreview'); if(!host) return; host.innerHTML='';
-  const cards=project.cards; const L=printLayout(); const P=project.print;
-  const pages=Math.max(1,Math.ceil(cards.length/L.per));
+  const {cards,L,sheets}=printSheets(); const P=project.print;
+  const pages=Math.max(1,sheets.length);
   ui.ppPage=Math.min(Math.max(1,ui.ppPage||1),pages);
   $('#ppPage').textContent=ui.ppPage; $('#ppCount').textContent=pages;
   if(!cards.length){ host.innerHTML='<div class="empty-note">Aucune carte à imprimer.</div>'; return; }
+  const sh=sheets[ui.ppPage-1];
   const avW=host.clientWidth-28, avH=host.clientHeight-28;
   const sc=Math.max(0.2, Math.min(avW/L.pg.w, avH/L.pg.h));  // px par mm (aperçu)
   const page=document.createElement('div'); page.className='pp-page';
   page.style.width=(L.pg.w*sc)+'px'; page.style.height=(L.pg.h*sc)+'px';
-  const start=(ui.ppPage-1)*L.per;
-  for(let s=0;s<L.per;s++){ const gi=start+s; if(gi>=cards.length) break;
-    const c=cards[gi], col=s%L.cols, row=Math.floor(s/L.cols);
-    const xmm=P.pageMargin+col*(L.cwmm+P.gap), ymm=P.pageMargin+row*(L.chmm+P.gap);
+  const badge=document.createElement('div'); badge.className='pp-badge'; badge.textContent=sh.kind==='verso'?'Verso':'Recto'; page.appendChild(badge);
+  for(let s=0;s<L.per;s++){ const gi=sh.page*L.per+s; if(gi>=cards.length) break;
+    const c=cards[gi]; const pos=slotPos(L,s,sh.kind);
+    const xmm=pos.x, ymm=pos.y;
     const el=document.createElement('div'); el.className='pp-card';
-    el.style.left=(xmm*sc)+'px'; el.style.top=(ymm*sc)+'px';
-    el.style.width=(L.cwmm*sc)+'px'; el.style.height=(L.chmm*sc)+'px';
-    const inner=document.createElement('div'); inner.className='stage'; el.appendChild(inner);
-    buildStage(inner,c,false); inner.style.transform=`scale(${(L.cwmm*sc)/project.card.w})`;
+    el.style.left=(xmm*sc)+'px'; el.style.top=(ymm*sc)+'px'; el.style.width=(L.cwmm*sc)+'px'; el.style.height=(L.chmm*sc)+'px';
+    if(sh.kind==='verso'){
+      const img=cardBack(c);
+      if(img){ el.style.backgroundImage=`url(${img})`; el.style.backgroundSize='cover'; el.style.backgroundPosition='center'; }
+      else { el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='center'; el.style.color='#b7b1a3'; el.style.fontSize='10px'; el.textContent='dos'; }
+    } else {
+      const inner=document.createElement('div'); inner.className='stage'; el.appendChild(inner);
+      buildStage(inner,c,false); inner.style.transform=`scale(${(L.cwmm*sc)/project.card.w})`;
+    }
     page.appendChild(el);
     if(P.cropMarks) addCropDivs(page, xmm*sc, ymm*sc, L.cwmm*sc, L.chmm*sc, sc);
   }
@@ -1353,6 +1412,9 @@ function bind(){
   // impression
   $('#printBtn').onclick=openPrintModal;
   $('#printCancel').onclick=()=>$('#printModal').classList.remove('show');
+  $('#pgDeck').onchange=e=>{ ensurePrint(); project.print.deck=e.target.value; ui.ppPage=1; printChanged(); };
+  $('#pgFaces').onchange=e=>{ ensurePrint(); project.print.faces=e.target.value; ui.ppPage=1; printChanged(); };
+  $('#pgFlip').onchange=e=>{ ensurePrint(); project.print.flip=e.target.value; printChanged(); };
   $('#pgFormat').onchange=e=>{ ensurePrint(); project.print.pageFormat=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgOrient').onchange=e=>{ ensurePrint(); project.print.orient=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgMargin').oninput=e=>{ ensurePrint(); project.print.pageMargin=+e.target.value; $('#pgMarginV').textContent=e.target.value; printChanged(); };
