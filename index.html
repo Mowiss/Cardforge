@@ -107,7 +107,8 @@
 
   .module{position:absolute; box-sizing:border-box; overflow:hidden; user-select:none}
   .module .content{width:100%; height:100%; display:flex; overflow:hidden; word-break:break-word}
-  .module .content.img{background-position:center; background-repeat:no-repeat}
+  .module .content.img{overflow:hidden}
+  .module .content img.imgel{width:100%; height:100%; object-fit:cover; transform-origin:center; display:block; pointer-events:none; -webkit-user-drag:none; user-select:none}
   .module .ph{width:100%;height:100%; display:flex; align-items:center; justify-content:center;
     color:#b7b1a3; font-size:12px; gap:6px; background:repeating-linear-gradient(45deg,#f2f0ea,#f2f0ea 8px,#eae7df 8px,#eae7df 16px)}
   .module.selected{outline:2px solid var(--accent); outline-offset:0}
@@ -222,20 +223,37 @@
   .floatmenu .dot{width:10px;height:10px;border-radius:50%; flex:0 0 auto}
   .dos-row{display:flex; align-items:stretch; gap:10px}
   .dos-prev{width:52px;height:72px;border-radius:6px;border:1px solid var(--line);background:#3a2f47;background-size:cover;background-position:center;flex:0 0 auto}
-  .print-modal{width:780px; max-width:95vw}
-  .print-grid{display:flex; gap:18px; align-items:stretch}
-  .print-settings{width:300px; flex:0 0 auto}
-  .print-preview-wrap{flex:1; min-width:0; display:flex; flex-direction:column; gap:8px}
+  .modal.print-modal{width:840px; flex:0 0 auto}
+  .crop-area{display:flex; align-items:center; justify-content:center; padding:10px}
+  .crop-frame{position:relative; overflow:hidden; border-radius:6px; background:#111; cursor:grab; touch-action:none;
+    box-shadow:0 0 0 2px var(--accent), 0 0 0 3px rgba(0,0,0,.4)}
+  .crop-frame.drag{cursor:grabbing}
+  .crop-frame img{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform-origin:center;
+    pointer-events:none; -webkit-user-drag:none; user-select:none}
+  .print-grid{display:flex; gap:16px; align-items:stretch; flex-wrap:nowrap}
+  .print-settings{flex:0 0 240px; min-width:0}
+  .print-preview-wrap{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:8px}
   .pp-toolbar{display:flex; align-items:center; justify-content:center; gap:12px; color:var(--muted); font-size:12px}
-  .pp-stage{flex:1; background:var(--canvas); border:1px solid var(--line); border-radius:10px; display:flex; align-items:center; justify-content:center; padding:14px; min-height:360px; overflow:auto}
-  .pp-page{position:relative; background:#fff; box-shadow:0 8px 26px rgba(0,0,0,.45)}
+  .pp-stage{flex:1; background:var(--canvas); border:1px solid var(--line); border-radius:10px; display:flex; align-items:center; justify-content:center; padding:14px; min-height:440px; overflow:auto}
+  .pp-page{position:relative; flex:0 0 auto; background:#fff; box-shadow:0 8px 26px rgba(0,0,0,.45)}
   .pp-card{position:absolute; overflow:hidden; background:#fff}
   .pp-card .stage{transform-origin:top left; position:absolute; top:0; left:0}
   .pp-crop{position:absolute; background:#000}
   .pp-badge{position:absolute; top:4px; left:4px; background:var(--accent); color:var(--accent-ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; z-index:5}
-  @media (max-width:720px){ .print-grid{flex-wrap:wrap} .print-settings{width:100%} }
+  .wiz-steps{display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap}
+  .wiz-step{flex:1; min-width:110px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    padding:8px 10px; border-radius:9px; font-size:12px; display:flex; align-items:center; gap:7px; text-align:left}
+  .wiz-step b{display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%;
+    background:var(--line); color:var(--ink); font-size:11px; flex:0 0 auto}
+  .wiz-step.on{border-color:var(--accent); color:var(--ink)}
+  .wiz-step.on b{background:var(--accent); color:var(--accent-ink)}
+  .wiz-step.done b{background:var(--ok); color:#0d2417}
+  .wiz-panel{display:none}
+  .wiz-panel.active{display:block}
+  .wiz-footer{display:flex; align-items:center; gap:8px; margin-top:16px}
+  .print-preview-wrap .empty-note{margin:auto}
 
-  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:100}
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:100; overflow:auto; padding:24px}
   .modal-bg.show{display:flex}
   .modal{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; width:360px}
   .modal h3{margin:0 0 14px; font-family:"Cinzel",serif}
@@ -392,39 +410,52 @@
 
 <div class="modal-bg" id="printModal">
   <div class="modal print-modal">
-    <h3>Impression</h3>
+    <h3>Assistant d'impression</h3>
+    <div class="wiz-steps" id="wizSteps">
+      <button class="wiz-step" data-s="1"><b>1</b> Contenu</button>
+      <button class="wiz-step" data-s="2"><b>2</b> Page</button>
+      <button class="wiz-step" data-s="3"><b>3</b> Mise en page</button>
+      <button class="wiz-step" data-s="4"><b>4</b> Export</button>
+    </div>
     <div class="print-grid">
       <div class="print-settings">
-        <div class="row">
+        <div class="wiz-panel" data-step="1">
           <div class="field"><label>Paquet à imprimer</label>
-            <select id="pgDeck"></select>
-          </div>
+            <select id="pgDeck"></select></div>
           <div class="field"><label>Faces</label>
-            <select id="pgFaces"><option value="recto">Recto seul</option><option value="duplex">Recto + verso</option></select>
-          </div>
+            <select id="pgFaces"><option value="recto">Recto seul</option><option value="duplex">Recto + verso</option></select></div>
+          <p class="hint">Choisis ce que tu veux imprimer : tout le projet, un paquet précis, et une ou deux faces.</p>
         </div>
-        <div class="row">
+        <div class="wiz-panel" data-step="2">
           <div class="field"><label>Format de page</label>
-            <select id="pgFormat"><option value="A4">A4 (210×297)</option><option value="Letter">Letter (216×279)</option></select>
-          </div>
+            <select id="pgFormat"><option value="A4">A4 (210×297)</option><option value="Letter">Letter (216×279)</option></select></div>
           <div class="field"><label>Orientation</label>
-            <select id="pgOrient"><option value="portrait">Portrait</option><option value="landscape">Paysage</option></select>
+            <select id="pgOrient"><option value="portrait">Portrait</option><option value="landscape">Paysage</option></select></div>
+          <p class="hint">Les cartes sont placées à leur taille réelle et la grille est centrée sur la page.</p>
+        </div>
+        <div class="wiz-panel" data-step="3">
+          <div class="row">
+            <div class="field"><label>Marge de page : <span id="pgMarginV">10</span> mm</label><input type="range" id="pgMargin" min="0" max="30" value="10"></div>
+            <div class="field"><label>Espacement : <span id="pgGapV">3</span> mm</label><input type="range" id="pgGap" min="0" max="15" value="3"></div>
+          </div>
+          <div class="field"><label>Marge de sécurité (guide sur la carte) : <span id="marginVal">28</span> px</label>
+            <input type="range" id="margin" min="0" max="120" value="28"></div>
+          <div class="toggle" style="margin:6px 0 8px">
+            <span class="hint">Repères de coupe</span>
+            <div class="switch on" id="cropSw"><i></i></div>
+          </div>
+          <div class="field" id="flipField"><label>Reliure recto/verso</label>
+            <select id="pgFlip"><option value="long">Bord long (défaut)</option><option value="short">Bord court</option></select>
+            <p class="hint" style="margin-top:6px">Détermine le miroir du dos pour une superposition parfaite au verso.</p>
           </div>
         </div>
-        <div class="row">
-          <div class="field"><label>Marge de page : <span id="pgMarginV">10</span> mm</label><input type="range" id="pgMargin" min="0" max="30" value="10"></div>
-          <div class="field"><label>Espacement : <span id="pgGapV">3</span> mm</label><input type="range" id="pgGap" min="0" max="15" value="3"></div>
+        <div class="wiz-panel" data-step="4">
+          <div class="field"><label>Format de sortie</label>
+            <div class="seg" id="pgOutput"><button data-v="pdf" class="on">PDF</button><button data-v="png">PNG</button></div>
+          </div>
+          <p class="hint" id="pdfNote"></p>
+          <p class="hint">Le fichier reprend le nom du projet et la date. Clique sur « Générer » pour lancer.</p>
         </div>
-        <div class="field"><label>Reliure recto/verso</label>
-          <select id="pgFlip"><option value="long">Bord long (défaut)</option><option value="short">Bord court</option></select>
-        </div>
-        <div class="field"><label>Marge de sécurité (guide sur la carte) : <span id="marginVal">28</span> px</label>
-          <input type="range" id="margin" min="0" max="120" value="28"></div>
-        <div class="toggle" style="margin:6px 0 4px">
-          <span class="hint">Repères de coupe (marqueurs d'impression)</span>
-          <div class="switch on" id="cropSw"><i></i></div>
-        </div>
-        <p class="hint" id="printInfo" style="margin:8px 0 0"></p>
       </div>
       <div class="print-preview-wrap">
         <div class="pp-toolbar">
@@ -433,12 +464,33 @@
           <button class="btn sm" id="ppNext">›</button>
         </div>
         <div class="pp-stage" id="printPreview"></div>
+        <p class="hint" id="printInfo" style="text-align:center"></p>
       </div>
     </div>
-    <div class="actions">
+    <div class="wiz-footer">
       <button class="btn ghost sm" id="printCancel">Fermer</button>
-      <button class="btn sm" id="printPNG">⎙ Print to PNG</button>
-      <button class="btn primary sm" id="printPDF">⎙ Print to PDF</button>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn sm" id="wizPrev">‹ Précédent</button>
+      <button class="btn sm" id="wizNext">Suivant ›</button>
+      <button class="btn primary sm" id="wizGen">⎙ Générer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="cropModal">
+  <div class="modal" style="width:auto; max-width:96vw">
+    <h3>Recadrer l'image</h3>
+    <div class="crop-area">
+      <div class="crop-frame" id="cropFrame"><img id="cropImg" alt=""></div>
+    </div>
+    <div class="field" style="margin-top:14px"><label>Zoom : <span id="cropZoomV">100</span>%</label>
+      <input type="range" id="cropZoom" min="50" max="400" value="100"></div>
+    <p class="hint">Molette pour zoomer · glisse l'image pour la centrer.</p>
+    <div class="actions">
+      <button class="btn ghost sm" id="cropReset">Réinitialiser</button>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn ghost sm" id="cropCancel">Annuler</button>
+      <button class="btn primary sm" id="cropOk">Valider</button>
     </div>
   </div>
 </div>
@@ -479,12 +531,12 @@ function blankCard(name){
 }
 function newProject(){
   project = { name:'Nouveau projet', card:{w:504,h:704}, margin:28,
-              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long' },
+              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long', output:'pdf' },
               sharedBack:null, decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
 function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true };
-  const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; }
+  const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; if(P.output===undefined) P.output='pdf'; }
 function pageDims(){ ensurePrint(); const P=project.print;
   let w=P.pageFormat==='Letter'?215.9:210, h=P.pageFormat==='Letter'?279.4:297;
   if(P.orient==='landscape'){ const t=w; w=h; h=t; } return {w,h}; }
@@ -497,7 +549,7 @@ function makeModule(type){
   const base={ id:uid(), type, locked:false, x:M, y:M, w:200, h:80, z:Date.now(),
     bg:'transparent', radius:8, borderW:0, borderColor:'#333333', padding:10, opacity:1,
     text:'', fontFamily:FONTS[0][0], fontSize:22, color:'#1a1a1a', align:'center', valign:'center',
-    bold:false, italic:false, lineHeight:1.2, image:null, fit:'cover' };
+    bold:false, italic:false, lineHeight:1.2, image:null, fit:'cover', imgZoom:1, imgX:0, imgY:0 };
   if(type==='title')       Object.assign(base,{x:M,y:M,w:W-2*M,h:74,fontSize:30,bold:true,fontFamily:FONTS[1][0],text:'Titre de la carte',bg:'#f3ecda',borderW:1,borderColor:'#c7b485',radius:10});
   if(type==='icon')        Object.assign(base,{x:W-M-78,y:M,w:78,h:78,radius:60,bg:'#ffffff',borderW:2,borderColor:'#c7b485',padding:8});
   if(type==='image')       Object.assign(base,{x:M,y:M+92,w:W-2*M,h:Math.round(H*0.42),bg:'#ecebe6',radius:8,padding:0});
@@ -520,7 +572,7 @@ function contentEl(m){
   c.style.padding=m.padding+'px';
   if(isText(m)){
     c.style.alignItems = m.valign==='top'?'flex-start':m.valign==='bottom'?'flex-end':'center';
-    c.style.justifyContent = m.align==='left'?'flex-start':m.align==='right'?'flex-end':'center';
+    c.style.justifyContent = (m.align==='left'||m.align==='justify')?'flex-start':m.align==='right'?'flex-end':'center';
     const t=document.createElement('div');
     t.style.width='100%'; t.style.textAlign=m.align; t.style.whiteSpace='pre-wrap';
     t.style.fontFamily=m.fontFamily; t.style.fontSize=m.fontSize+'px'; t.style.color=m.color;
@@ -532,8 +584,10 @@ function contentEl(m){
   } else {
     if(m.image){
       c.classList.add('img');
-      c.style.backgroundImage=`url(${m.image})`;
-      c.style.backgroundSize = m.fit==='contain'?'contain':'cover';
+      const img=document.createElement('img'); img.className='imgel'; img.src=m.image; img.alt='';
+      img.style.objectFit = m.fit==='contain'?'contain':'cover';
+      img.style.transform = `translate(${m.imgX||0}%, ${m.imgY||0}%) scale(${m.imgZoom||1})`;
+      c.appendChild(img);
     } else {
       const ph=document.createElement('div'); ph.className='ph';
       ph.textContent = m.type==='icon'?'⬡ icône':'🖼️ image';
@@ -703,9 +757,10 @@ function renderRight(){
       </div>
       <div class="field"><label>Alignement</label>
         <div class="seg" id="f_align">
-          <button data-v="left" class="${m.align==='left'?'on':''}">⯇</button>
-          <button data-v="center" class="${m.align==='center'?'on':''}">≡</button>
-          <button data-v="right" class="${m.align==='right'?'on':''}">⯈</button>
+          <button data-v="left" title="Gauche" class="${m.align==='left'?'on':''}">⯇</button>
+          <button data-v="center" title="Centré" class="${m.align==='center'?'on':''}">≡</button>
+          <button data-v="right" title="Droite" class="${m.align==='right'?'on':''}">⯈</button>
+          <button data-v="justify" title="Justifié" class="${m.align==='justify'?'on':''}">▤</button>
         </div>
       </div>
       <div class="field"><label>Position verticale</label>
@@ -728,6 +783,16 @@ function renderRight(){
       <div class="field"><label>Ajustement</label>
         <div class="seg" id="f_fit"><button data-v="cover" class="${m.fit==='cover'?'on':''}">Remplir</button><button data-v="contain" class="${m.fit==='contain'?'on':''}">Contenir</button></div>
       </div>
+      ${m.image?`
+      <button class="btn sm" id="f_recrop" style="width:100%;margin-bottom:10px">✥ Recadrer l'image</button>
+      <div class="field"><label>Zoom : <span id="f_izoomV">${Math.round((m.imgZoom||1)*100)}</span>%</label>
+        <input type="range" id="f_izoom" min="50" max="400" value="${Math.round((m.imgZoom||1)*100)}"></div>
+      <div class="row">
+        <div class="field"><label>Décalage X : <span id="f_ixV">${m.imgX||0}</span>%</label><input type="range" id="f_ix" min="-100" max="100" value="${m.imgX||0}"></div>
+        <div class="field"><label>Décalage Y : <span id="f_iyV">${m.imgY||0}</span>%</label><input type="range" id="f_iy" min="-100" max="100" value="${m.imgY||0}"></div>
+      </div>
+      <button class="btn ghost sm" id="f_ireset" style="width:100%">Réinitialiser le cadrage</button>
+      <p class="hint" style="margin-top:8px">Zoom + décalage recadrent l'image dans le cadre.</p>`:''}
     </div>`;
   }
 
@@ -772,9 +837,20 @@ function wireRight(m){
     segWire('f_ital',v=>upd({italic:v==='1'}));
     $('#f_lh').oninput=e=>updRe({lineHeight:parseFloat(e.target.value)});
   } else {
-    $('#f_img').onchange=e=>readImage(e.target.files[0],d=>updRe({image:d}));
+    $('#f_img').onchange=e=>readImage(e.target.files[0],d=>{
+      openCrop({w:m.w,h:m.h,padding:m.padding,imgZoom:1,imgX:0,imgY:0}, d, cr=>{
+        Object.assign(m,{image:d,imgZoom:cr.zoom,imgX:cr.x,imgY:cr.y}); save(); refreshStage(); renderRight();
+      });
+    });
     if($('#f_imgClear')) $('#f_imgClear').onclick=()=>updRe({image:null});
+    if($('#f_recrop')) $('#f_recrop').onclick=()=>openCrop(m, m.image, cr=>{
+      Object.assign(m,{imgZoom:cr.zoom,imgX:cr.x,imgY:cr.y}); save(); refreshStage(); renderRight();
+    });
     segWire('f_fit',v=>upd({fit:v}));
+    if($('#f_izoom')) $('#f_izoom').oninput=e=>{ $('#f_izoomV').textContent=e.target.value; upd({imgZoom:+e.target.value/100}); };
+    if($('#f_ix')) $('#f_ix').oninput=e=>{ $('#f_ixV').textContent=e.target.value; upd({imgX:+e.target.value}); };
+    if($('#f_iy')) $('#f_iy').oninput=e=>{ $('#f_iyV').textContent=e.target.value; upd({imgY:+e.target.value}); };
+    if($('#f_ireset')) $('#f_ireset').onclick=()=>updRe({imgZoom:1,imgX:0,imgY:0});
   }
   $('#f_bg').oninput=e=>upd({bg:e.target.value});
   $('#f_bgClear').onclick=()=>upd({bg:'transparent'});
@@ -1087,6 +1163,37 @@ function stepCard(dir){
    ========================================================================= */
 function readImage(file,cb){ if(!file) return; const r=new FileReader(); r.onload=()=>cb(r.result); r.readAsDataURL(file); }
 
+/* ---------- Recadreur d'image (type photo de profil) ---------- */
+let cropM=null;
+function applyCrop(){ const i=$('#cropImg'); if(i) i.style.transform=`translate(${cropM.x}%, ${cropM.y}%) scale(${cropM.zoom})`; }
+function openCrop(src, image, onDone){
+  ui.cropDone=onDone;
+  cropM={ zoom:src.imgZoom||1, x:src.imgX||0, y:src.imgY||0 };
+  const cw=Math.max(1,(src.w||100)-2*(src.padding||0)), ch=Math.max(1,(src.h||100)-2*(src.padding||0));
+  const MAX=360; let fw,fh; if(cw>=ch){ fw=MAX; fh=MAX*ch/cw; } else { fh=MAX; fw=MAX*cw/ch; }
+  const frame=$('#cropFrame'); frame.style.width=Math.round(fw)+'px'; frame.style.height=Math.round(fh)+'px';
+  $('#cropImg').src=image;
+  $('#cropZoom').value=Math.round(cropM.zoom*100); $('#cropZoomV').textContent=Math.round(cropM.zoom*100);
+  applyCrop(); $('#cropModal').classList.add('show');
+}
+function bindCrop(){
+  const frame=$('#cropFrame'); if(!frame) return;
+  frame.addEventListener('wheel',e=>{ if(!cropM) return; e.preventDefault();
+    cropM.zoom=clamp(cropM.zoom*(e.deltaY<0?1.08:0.92),0.5,4);
+    $('#cropZoom').value=Math.round(cropM.zoom*100); $('#cropZoomV').textContent=Math.round(cropM.zoom*100); applyCrop();
+  }, {passive:false});
+  let cd=null;
+  frame.addEventListener('pointerdown',e=>{ if(!cropM) return; cd={sx:e.clientX,sy:e.clientY,ox:cropM.x,oy:cropM.y,w:frame.clientWidth,h:frame.clientHeight};
+    frame.setPointerCapture(e.pointerId); frame.classList.add('drag'); });
+  frame.addEventListener('pointermove',e=>{ if(!cd) return; cropM.x=cd.ox+(e.clientX-cd.sx)/cd.w*100; cropM.y=cd.oy+(e.clientY-cd.sy)/cd.h*100; applyCrop(); });
+  const end=()=>{ cd=null; frame.classList.remove('drag'); };
+  frame.addEventListener('pointerup',end); frame.addEventListener('pointercancel',end);
+  $('#cropZoom').oninput=e=>{ if(!cropM) return; cropM.zoom=+e.target.value/100; $('#cropZoomV').textContent=e.target.value; applyCrop(); };
+  $('#cropReset').onclick=()=>{ cropM={zoom:1,x:0,y:0}; $('#cropZoom').value=100; $('#cropZoomV').textContent=100; applyCrop(); };
+  $('#cropCancel').onclick=()=>$('#cropModal').classList.remove('show');
+  $('#cropOk').onclick=()=>{ $('#cropModal').classList.remove('show'); if(ui.cropDone) ui.cropDone(cropM); };
+}
+
 function stampNow(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}`; }
 function projSlug(){ return (project.name||'projet').replace(/[^\w\-]+/g,'_'); }
@@ -1146,13 +1253,21 @@ async function renderCardToCanvas(card, side, scale, done){
       drawText(ctx,m,px,py,pw,ph);
     } else if(m.image){
       const im=await loadImg(m.image);
-      if(im){ if(m.fit==='contain') drawContain(ctx,im,px,py,pw,ph); else drawCover(ctx,im,px,py,pw,ph); }
+      if(im) drawImageMod(ctx,im,px,py,pw,ph,m);
     }
     ctx.restore();
   }
   ctx.restore();
   strokeCardBorder(ctx,card,W,H,rad);
   done(cv);
+}
+function drawImageMod(ctx,im,x,y,w,h,m){
+  let r = (m.fit==='contain') ? Math.min(w/im.width,h/im.height) : Math.max(w/im.width,h/im.height);
+  r *= (m.imgZoom||1);
+  const iw=im.width*r, ih=im.height*r;
+  const cx = x + w/2 + (m.imgX||0)/100*w;   // décalage en % du cadre (comme le translate CSS)
+  const cy = y + h/2 + (m.imgY||0)/100*h;
+  ctx.drawImage(im, cx-iw/2, cy-ih/2, iw, ih);
 }
 function strokeCardBorder(ctx,card,W,H,rad){
   const cbw=card.borderW||0; if(cbw<=0) return;
@@ -1250,7 +1365,6 @@ async function printPDF(){
 }
 function openPrintModal(){
   ensurePrint(); const P=project.print;
-  // liste des paquets
   const opts=['<option value="all">Toutes les cartes</option>']
     .concat(project.decks.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`));
   if(project.cards.some(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId))) opts.push('<option value="none">Hors paquet</option>');
@@ -1262,11 +1376,32 @@ function openPrintModal(){
   $('#pgGap').value=P.gap; $('#pgGapV').textContent=P.gap;
   $('#cropSw').classList.toggle('on',!!P.cropMarks);
   $('#margin').value=project.margin; $('#marginVal').textContent=project.margin;
-  ui.ppPage=1;
+  document.querySelectorAll('#pgOutput button').forEach(b=>b.classList.toggle('on',b.dataset.v===P.output));
+  ui.ppPage=1; goStep(1);
   $('#printModal').classList.add('show');
-  requestAnimationFrame(()=>{ updatePrintInfo(); renderPrintPreview(); });
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ updatePrintInfo(); renderPrintPreview(); }));
 }
-function printChanged(){ save(); updatePrintInfo(); renderPrintPreview(); }
+function goStep(n){
+  ui.wizStep=Math.max(1,Math.min(4,n));
+  document.querySelectorAll('.wiz-step').forEach(b=>{ const s=+b.dataset.s;
+    b.classList.toggle('on',s===ui.wizStep); b.classList.toggle('done',s<ui.wizStep); });
+  document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.toggle('active',+p.dataset.step===ui.wizStep));
+  $('#wizPrev').style.display=ui.wizStep>1?'':'none';
+  $('#wizNext').style.display=ui.wizStep<4?'':'none';
+  $('#wizGen').style.display=ui.wizStep===4?'':'none';
+  syncPrintConditionals();
+}
+function syncPrintConditionals(){
+  ensurePrint();
+  $('#flipField').style.display = project.print.faces==='duplex' ? '' : 'none';
+  const pdfOk = !!(window.jspdf && window.jspdf.jsPDF);
+  const note=$('#pdfNote');
+  if(project.print.output==='pdf') note.textContent = pdfOk ? 'PDF vectorisé multi-pages (une page par planche).' : '⚠ PDF indisponible hors ligne — bascule sur PNG ou reconnecte-toi.';
+  else note.textContent = 'Une image PNG par planche (fonctionne hors ligne).';
+}
+function generatePrint(){ ensurePrint(); if(project.print.output==='pdf') printPDF(); else printPNG(); }
+
+function printChanged(){ save(); updatePrintInfo(); syncPrintConditionals(); renderPrintPreview(); }
 function addCropDivs(page,x,y,w,h,sc){
   const Ln=4*sc, O=1.2*sc, T=1;
   const seg=(l,t,ww,hh)=>{ const d=document.createElement('div'); d.className='pp-crop';
@@ -1319,19 +1454,34 @@ function drawText(ctx,m,x,y,w,h){
   ctx.fillStyle=m.color; ctx.textBaseline='top';
   ctx.font=`${m.italic?'italic ':''}${m.bold?'700':'400'} ${m.fontSize}px ${m.fontFamily}`;
   const lh=m.fontSize*m.lineHeight;
-  // découpe en lignes (respecte \n + wrap)
+  // découpe en lignes (respecte \n + retour auto) ; justify=true = ligne à étirer
   const lines=[];
   m.text.split('\n').forEach(par=>{
-    const words=par.split(' '); let cur='';
-    words.forEach(wd=>{ const test=cur?cur+' '+wd:wd;
-      if(ctx.measureText(test).width>w && cur){ lines.push(cur); cur=wd; } else cur=test; });
-    lines.push(cur);
+    const words=par.split(/\s+/).filter(Boolean);
+    if(!words.length){ lines.push({words:[],justify:false}); return; }
+    let cur=[];
+    words.forEach(wd=>{ const test=cur.concat(wd).join(' ');
+      if(ctx.measureText(test).width>w && cur.length){ lines.push({words:cur.slice(),justify:true}); cur=[wd]; }
+      else cur.push(wd); });
+    lines.push({words:cur.slice(),justify:false});   // dernière ligne du paragraphe : non justifiée
   });
   const total=lines.length*lh;
   let sy = m.valign==='center'? y+(h-total)/2 : m.valign==='bottom'? y+h-total : y;
-  ctx.textAlign = m.align;
-  const tx = m.align==='center'? x+w/2 : m.align==='right'? x+w : x;
-  lines.forEach((ln,i)=>ctx.fillText(ln,tx,sy+i*lh));
+  const justif = m.align==='justify';
+  lines.forEach((ln,i)=>{
+    const yy=sy+i*lh; const text=ln.words.join(' ');
+    if(justif && ln.justify && ln.words.length>1){
+      const tw=ln.words.reduce((s,wd)=>s+ctx.measureText(wd).width,0);
+      const space=(w-tw)/(ln.words.length-1);
+      ctx.textAlign='left'; let cx=x;
+      ln.words.forEach(wd=>{ ctx.fillText(wd,cx,yy); cx+=ctx.measureText(wd).width+space; });
+    } else {
+      const al = justif ? 'left' : m.align;
+      ctx.textAlign=al;
+      const tx = al==='center'? x+w/2 : al==='right'? x+w : x;
+      ctx.fillText(text,tx,yy);
+    }
+  });
 }
 
 /* =========================================================================
@@ -1422,8 +1572,14 @@ function bind(){
   $('#cropSw').onclick=()=>{ ensurePrint(); project.print.cropMarks=!project.print.cropMarks; $('#cropSw').classList.toggle('on',project.print.cropMarks); printChanged(); };
   $('#ppPrev').onclick=()=>{ ui.ppPage=(ui.ppPage||1)-1; renderPrintPreview(); };
   $('#ppNext').onclick=()=>{ ui.ppPage=(ui.ppPage||1)+1; renderPrintPreview(); };
-  $('#printPNG').onclick=printPNG;
-  $('#printPDF').onclick=printPDF;
+  $('#printPNG') && ($('#printPNG').onclick=printPNG);
+  $('#printPDF') && ($('#printPDF').onclick=printPDF);
+  $('#wizPrev').onclick=()=>goStep(ui.wizStep-1);
+  $('#wizNext').onclick=()=>goStep(ui.wizStep+1);
+  $('#wizGen').onclick=generatePrint;
+  document.querySelectorAll('.wiz-step').forEach(b=>b.onclick=()=>goStep(+b.dataset.s));
+  document.querySelectorAll('#pgOutput button').forEach(b=>b.onclick=()=>{ ensurePrint(); project.print.output=b.dataset.v;
+    document.querySelectorAll('#pgOutput button').forEach(x=>x.classList.toggle('on',x===b)); save(); syncPrintConditionals(); });
   // menu ⛯ (fichiers + installation)
   const gm=$('#gearMenu');
   $('#gearBtn').onclick=e=>{ e.stopPropagation(); gm.classList.toggle('show'); };
@@ -1448,6 +1604,7 @@ function bind(){
   };
   // fenêtres maison (ask)
   $('#askOk').onclick=()=>askClose(true);
+  bindCrop();
   $('#askCancel').onclick=()=>askClose(false);
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
   // clavier : suppr + flèches (seulement en édition recto)
