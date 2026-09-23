@@ -197,6 +197,11 @@
     box-shadow:0 6px 16px rgba(0,0,0,.45); transition:box-shadow .2s}
   .pile-card:hover .art{box-shadow:0 24px 50px rgba(0,0,0,.6)}
   .dos-card .art{box-shadow:0 6px 16px rgba(0,0,0,.45), inset 0 0 0 2px rgba(255,255,255,.18)}
+  .art.drag-ghost{position:fixed; top:0; left:0; pointer-events:none; z-index:99999; opacity:.92; border-radius:10px; overflow:hidden; box-shadow:0 22px 55px rgba(0,0,0,.6)}
+  .drop-marker{position:absolute; top:12px; width:4px; background:var(--accent); border-radius:3px; z-index:800; pointer-events:none; box-shadow:0 0 10px var(--accent)}
+  .deck-row.drop-hover{outline:2px dashed var(--accent); outline-offset:3px}
+  body.dragging-card, body.dragging-card .pile-card{cursor:grabbing}
+  .pile-card{cursor:grab}
   .pile-card .art .stage{transform-origin:top left; position:relative}
   .pile-no{position:absolute; top:6px; left:6px; background:var(--accent); color:var(--accent-ink); font-size:11px; font-weight:700;
     min-width:20px; height:20px; padding:0 5px; border-radius:6px; display:none; align-items:center; justify-content:center; z-index:3}
@@ -224,6 +229,18 @@
   .dos-row{display:flex; align-items:stretch; gap:10px}
   .dos-prev{width:52px;height:72px;border-radius:6px;border:1px solid var(--line);background:#3a2f47;background-size:cover;background-position:center;flex:0 0 auto}
   .modal.print-modal{width:840px; flex:0 0 auto}
+  .modal.rules-modal{width:min(700px,96vw); flex:0 0 auto}
+  .rte-toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:9px 9px 0 0}
+  .rte-toolbar .rte-b{width:30px; height:30px; background:var(--panel); border:1px solid var(--line); color:var(--ink); border-radius:7px; font-size:14px; display:inline-flex; align-items:center; justify-content:center}
+  .rte-toolbar .rte-b:hover{border-color:var(--accent)}
+  .rte-toolbar .rte-sep{width:1px; height:22px; background:var(--line); margin:0 4px}
+  .rte-toolbar select{background:var(--panel); border:1px solid var(--line); color:var(--ink); padding:5px 6px; border-radius:7px; font-size:12px; max-width:130px}
+  .rte-color{display:inline-flex; align-items:center; gap:4px; background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:2px 6px; height:30px}
+  .rte-color input[type=color]{width:24px; height:22px; padding:0; border:none; background:none}
+  .rte{min-height:min(52vh,380px); max-height:60vh; overflow:auto; background:var(--panel-2); border:1px solid var(--line); border-top:none;
+    border-radius:0 0 9px 9px; padding:14px 16px; color:var(--ink); font-size:15px; line-height:1.6; outline:none}
+  .rte:empty:before{content:attr(data-ph); color:var(--muted)}
+  .rte:focus{border-color:var(--accent)}
   .crop-area{display:flex; align-items:center; justify-content:center; padding:10px}
   .crop-frame{position:relative; overflow:hidden; border-radius:6px; background:#111; cursor:grab; touch-action:none;
     box-shadow:0 0 0 2px var(--accent), 0 0 0 3px rgba(0,0,0,.4)}
@@ -272,11 +289,13 @@
     <div class="brand"><span class="logo">🎴</span><b>Carte Forge</b><span class="tag">atelier de cartes</span></div>
     <input id="projName" class="proj-name" placeholder="Nom du projet">
     <div class="spacer"></div>
+    <button class="btn ghost sm" id="rulesBtn">📓 Règles</button>
     <button class="btn ghost sm" id="printBtn">⎙ Print</button>
     <div class="menu-wrap">
       <button class="btn primary sm" id="gearBtn" title="Paramètre">⛯ Paramètre</button>
       <div class="menu" id="gearMenu">
         <button class="menu-item" id="mSave">💾 Sauver JSON</button>
+        <button class="menu-item" id="mFolder">📁 Dossier de sauvegarde…</button>
         <button class="menu-item" id="mOpen">📂 Ouvrir JSON</button>
         <button class="menu-item" id="mPng">🖼️ Export PNG (carte)</button>
         <div class="menu-sep"></div>
@@ -446,7 +465,12 @@
           </div>
           <div class="field" id="flipField"><label>Reliure recto/verso</label>
             <select id="pgFlip"><option value="long">Bord long (défaut)</option><option value="short">Bord court</option></select>
-            <p class="hint" style="margin-top:6px">Détermine le miroir du dos pour une superposition parfaite au verso.</p>
+            <p class="hint" style="margin:6px 0 10px">Détermine le miroir du dos. Si le verso sort inversé, essaie l'autre option.</p>
+            <div class="row">
+              <div class="field"><label>Calage verso X : <span id="pgVXV">0</span> mm</label><input type="range" id="pgVX" min="-10" max="10" step="0.5" value="0"></div>
+              <div class="field"><label>Calage verso Y : <span id="pgVYV">0</span> mm</label><input type="range" id="pgVY" min="-10" max="10" step="0.5" value="0"></div>
+            </div>
+            <p class="hint" style="margin-top:6px">Décale le dos pour compenser le léger décalage recto/verso de ton imprimante.</p>
           </div>
         </div>
         <div class="wiz-panel" data-step="4">
@@ -455,6 +479,7 @@
           </div>
           <p class="hint" id="pdfNote"></p>
           <p class="hint">Le fichier reprend le nom du projet et la date. Clique sur « Générer » pour lancer.</p>
+          <p class="hint" style="margin-top:8px"><b style="color:var(--ink)">Impression :</b> règle l'échelle sur <b>100 % / Taille réelle</b> (surtout pas « Ajuster à la page ») pour garder les cotes exactes et la superposition recto/verso.</p>
         </div>
       </div>
       <div class="print-preview-wrap">
@@ -473,6 +498,31 @@
       <button class="btn sm" id="wizPrev">‹ Précédent</button>
       <button class="btn sm" id="wizNext">Suivant ›</button>
       <button class="btn primary sm" id="wizGen">⎙ Générer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="rulesModal">
+  <div class="modal rules-modal">
+    <h3>Règles du jeu</h3>
+    <div class="rte-toolbar" id="rteToolbar">
+      <button class="rte-b" data-cmd="bold" title="Gras"><b>B</b></button>
+      <button class="rte-b" data-cmd="italic" title="Italique"><i>I</i></button>
+      <button class="rte-b" data-cmd="underline" title="Souligné"><u>U</u></button>
+      <span class="rte-sep"></span>
+      <button class="rte-b" data-cmd="justifyLeft" title="Gauche">⯇</button>
+      <button class="rte-b" data-cmd="justifyCenter" title="Centré">≡</button>
+      <button class="rte-b" data-cmd="justifyRight" title="Droite">⯈</button>
+      <button class="rte-b" data-cmd="justifyFull" title="Justifié">▤</button>
+      <span class="rte-sep"></span>
+      <select id="rteFont" title="Police"></select>
+      <select id="rteSize" title="Corps"></select>
+      <label class="rte-color" title="Couleur du texte"><b>A</b><input type="color" id="rteColor" value="#f3edf7"></label>
+    </div>
+    <div class="rte" id="rulesText" contenteditable="true"></div>
+    <p class="hint" style="margin-top:8px">Enregistré automatiquement avec le projet.</p>
+    <div class="actions">
+      <button class="btn primary sm" id="rulesClose">Fermer</button>
     </div>
   </div>
 </div>
@@ -542,12 +592,12 @@ function blankCard(name){
 }
 function newProject(){
   project = { name:'Nouveau projet', card:{w:504,h:704}, margin:28,
-              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long', output:'pdf' },
-              sharedBack:null, decks:[], cards:[ blankCard('Carte 1') ] };
+              print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long', vOffX:0, vOffY:0, output:'pdf' },
+              sharedBack:null, rules:'', decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
 function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true };
-  const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; if(P.output===undefined) P.output='pdf'; }
+  const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; if(P.output===undefined) P.output='pdf'; if(P.vOffX===undefined) P.vOffX=0; if(P.vOffY===undefined) P.vOffY=0; }
 function pageDims(){ ensurePrint(); const P=project.print;
   let w=P.pageFormat==='Letter'?215.9:210, h=P.pageFormat==='Letter'?279.4:297;
   if(P.orient==='landscape'){ const t=w; w=h; h=t; } return {w,h}; }
@@ -944,9 +994,9 @@ function renderVersoPanel(){
 /* =========================================================================
    VUE PROJET — paquets en piles battues
    ========================================================================= */
+const THUMB_W=120, PILE_STEP=42;
 const ICONS={
   plus:`<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
-  num:`<svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>`,
   edit:`<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
   copy:`<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
   move:`<svg viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>`,
@@ -954,22 +1004,22 @@ const ICONS={
 };
 function hashRot(id){ let h=0; for(const ch of (id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
   return { rot:((h%1000)/1000*10-5).toFixed(1), jit:(h>>4)%7 }; }
-function cardsOfDeck(id){ return project.cards.filter(c=>c.deckId===id)
-  .sort((a,b)=>((a.pileNo??1e9)-(b.pileNo??1e9)) || (project.cards.indexOf(a)-project.cards.indexOf(b))); }
+function cardsOfDeck(id){ return project.cards.filter(c=>c.deckId===id); }   // ordre = position dans project.cards
+function looseCards(){ return project.cards.filter(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId)); }
 
 function renderProject(){
   $('#cardCount').textContent = `${project.cards.length} carte(s) · ${project.decks.length} paquet(s)`;
   const cont=$('#decksContainer'); cont.innerHTML='';
-  const thumbW=120, thumbH=Math.round(thumbW*project.card.h/project.card.w), STEP=42;
+  const thumbW=THUMB_W, thumbH=Math.round(thumbW*project.card.h/project.card.w), STEP=PILE_STEP;
 
   const rows=project.decks.map(d=>({deck:d, cards:cardsOfDeck(d.id)}));
-  const loose=project.cards.filter(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId));
-  if(loose.length) rows.push({deck:null, cards:loose});
-  if(!rows.length){ cont.innerHTML=`<div class="empty-note">Aucune carte. Ajoute une carte ou crée un paquet.</div>`; return; }
+  const loose=looseCards();
+  rows.push({deck:null, cards:loose});
+  if(!project.cards.length && !project.decks.length){ cont.innerHTML=`<div class="empty-note">Aucune carte. Ajoute une carte ou crée un paquet.</div>`; return; }
 
   rows.forEach(row=>{
     const d=row.deck;
-    const rowEl=document.createElement('div'); rowEl.className='deck-row'+(d?'':' loose');
+    const rowEl=document.createElement('div'); rowEl.className='deck-row'+(d?'':' loose'); rowEl.dataset.deck = d? d.id : '';
     const head=document.createElement('div'); head.className='deck-row-head';
     head.innerHTML =
       `<span class="dot" style="background:${d?d.color:'#6b6b6b'}"></span>`+
@@ -992,8 +1042,9 @@ function renderProject(){
     const pile=document.createElement('div'); pile.className='pile';
     const hasDos = !!(d && d.back);
     const off = hasDos ? 1 : 0;                 // décalage : le dos ouvre la pile
+    pile.dataset.off=off;
     const total = row.cards.length + off;
-    if(total===0){ pile.classList.add('empty'); pile.textContent='Aucune carte — clique sur ＋ pour en ajouter.'; }
+    if(total===0){ pile.classList.add('empty'); pile.textContent='Aucune carte — glisse-en une ici ou clique sur ＋.'; }
     else pile.style.height=(thumbH+96)+'px';
 
     if(hasDos){
@@ -1013,35 +1064,32 @@ function renderProject(){
     row.cards.forEach((c,i)=>{
       const idx=i+off;
       const {rot,jit}=hashRot(c.id);
-      const pc=document.createElement('div'); pc.className='pile-card';
+      const pc=document.createElement('div'); pc.className='pile-card'; pc.dataset.cardid=c.id;
       pc.style.left=(idx*STEP)+'px'; const baseZ=idx+1; pc.style.zIndex=baseZ;
       pc.style.setProperty('--rot',rot+'deg'); pc.style.setProperty('--jit',jit+'px');
-      pc.addEventListener('mouseenter',()=>pc.style.zIndex=9999);
-      pc.addEventListener('mouseleave',()=>pc.style.zIndex=baseZ);
+      pc.addEventListener('mouseenter',()=>{ if(!cardDrag) pc.style.zIndex=9999; });
+      pc.addEventListener('mouseleave',()=>{ if(!cardDrag) pc.style.zIndex=baseZ; });
 
       const art=document.createElement('div'); art.className='art'; art.style.width=thumbW+'px'; art.style.height=thumbH+'px';
       const inner=document.createElement('div'); inner.className='stage'; art.appendChild(inner);
       buildStage(inner,c,false); inner.style.transform=`scale(${thumbW/project.card.w})`;
       pc.appendChild(art);
 
-      if(c.pileNo!=null){ const no=document.createElement('div'); no.className='pile-no'; no.textContent=c.pileNo; pc.appendChild(no); }
       const nm=document.createElement('div'); nm.className='pile-name'; nm.textContent=c.name; pc.appendChild(nm);
 
       const tools=document.createElement('div'); tools.className='card-tools';
       tools.innerHTML=
-        `<button data-t="num" title="Numéroter (ordre dans la pile)">${ICONS.num}</button>`+
         `<button data-t="edit" title="Modifier le recto">${ICONS.edit}</button>`+
         `<button data-t="copy" title="Copier la carte">${ICONS.copy}</button>`+
         `<button data-t="move" title="Déplacer vers un paquet">${ICONS.move}</button>`+
         `<button data-t="del" class="del" title="Supprimer">${ICONS.del}</button>`;
-      tools.querySelector('[data-t=num]').onclick =e=>{ e.stopPropagation(); numberCard(c); };
       tools.querySelector('[data-t=edit]').onclick=e=>{ e.stopPropagation(); openCardRecto(c.id); };
       tools.querySelector('[data-t=copy]').onclick=e=>{ e.stopPropagation(); duplicateCard(c.id); };
       tools.querySelector('[data-t=move]').onclick=e=>{ e.stopPropagation(); showMoveMenu(c,e.currentTarget); };
       tools.querySelector('[data-t=del]').onclick =e=>{ e.stopPropagation(); askConfirm('Supprimer cette carte ?', ()=>deleteCard(c.id)); };
       pc.appendChild(tools);
 
-      art.onclick=()=>openCardRecto(c.id);
+      pc.addEventListener('pointerdown',e=>{ if(e.target.closest('.card-tools')) return; if(e.button) return; startCardDrag(e,c.id,pc); });
       pile.appendChild(pc);
     });
 
@@ -1054,11 +1102,77 @@ function newCardInDeck(deckId){
   const c=blankCard('Carte '+(project.cards.length+1)); c.deckId=deckId||null;
   project.cards.push(c); save(); renderProject(); openEditor(c.id,'recto'); toast('Carte ajoutée');
 }
-function numberCard(c){
-  askText('Numéro de la carte dans la pile (vide = retirer) :', c.pileNo??'', v=>{
-    const s=(v||'').trim(); c.pileNo = s===''? null : parseInt(s,10);
-    if(Number.isNaN(c.pileNo)) c.pileNo=null; save(); renderProject();
-  });
+/* ---------- Drag-n-drop des cartes (réordonner + changer de paquet) ---------- */
+let cardDrag=null, cardDrop=null;
+function startCardDrag(e,id,el){
+  cardDrag={ id, el, sx:e.clientX, sy:e.clientY, moved:false, ghost:null, offx:0, offy:0 };
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  el.addEventListener('pointermove',onCardDragMove);
+  el.addEventListener('pointerup',onCardDragUp);
+  el.addEventListener('pointercancel',onCardDragUp);
+}
+function onCardDragMove(e){
+  if(!cardDrag) return;
+  const dx=e.clientX-cardDrag.sx, dy=e.clientY-cardDrag.sy;
+  if(!cardDrag.moved){
+    if(Math.hypot(dx,dy)<6) return;
+    cardDrag.moved=true;
+    const art=cardDrag.el.querySelector('.art'); const r=art.getBoundingClientRect();
+    const g=art.cloneNode(true); g.classList.add('drag-ghost');
+    g.style.width=r.width+'px'; g.style.height=r.height+'px';
+    const gs=g.querySelector('.stage'); if(gs){ gs.style.transformOrigin='top left'; gs.style.position='absolute'; gs.style.top='0'; gs.style.left='0'; }
+    cardDrag.offx=cardDrag.sx-r.left; cardDrag.offy=cardDrag.sy-r.top;
+    document.body.appendChild(g); cardDrag.ghost=g;
+    cardDrag.el.style.opacity='0.25'; document.body.classList.add('dragging-card');
+  }
+  cardDrag.ghost.style.transform=`translate(${e.clientX-cardDrag.offx}px, ${e.clientY-cardDrag.offy}px)`;
+  updateDropTarget(e.clientX,e.clientY);
+}
+function clearDropMarker(){ document.querySelectorAll('.drop-marker').forEach(n=>n.remove());
+  document.querySelectorAll('.deck-row.drop-hover').forEach(r=>r.classList.remove('drop-hover')); }
+function updateDropTarget(x,y){
+  clearDropMarker();
+  const rows=[...document.querySelectorAll('.deck-row')];
+  let targetRow=null;
+  for(const r of rows){ const rr=r.getBoundingClientRect(); if(y>=rr.top && y<=rr.bottom){ targetRow=r; break; } }
+  if(!targetRow) return;
+  const pile=targetRow.querySelector('.pile'); const off=+(pile.dataset.off||0);
+  const deckId = targetRow.dataset.deck || null;
+  const cardEls=[...pile.querySelectorAll('.pile-card:not(.dos-card)')].filter(el=>el!==cardDrag.el);
+  const pr=pile.getBoundingClientRect();
+  let index=Math.round((x-pr.left)/PILE_STEP)-off;
+  index=Math.max(0,Math.min(cardEls.length,index));
+  cardDrop={ deckId, index };
+  targetRow.classList.add('drop-hover');
+  const m=document.createElement('div'); m.className='drop-marker';
+  m.style.left=Math.max(0,(off+index)*PILE_STEP-3)+'px';
+  m.style.height=(Math.max(pile.clientHeight,THUMB_W)-20)+'px';
+  pile.appendChild(m);
+}
+function onCardDragUp(){
+  if(!cardDrag) return;
+  const el=cardDrag.el;
+  el.removeEventListener('pointermove',onCardDragMove);
+  el.removeEventListener('pointerup',onCardDragUp);
+  el.removeEventListener('pointercancel',onCardDragUp);
+  const wasDrag=cardDrag.moved, id=cardDrag.id, drop=cardDrop;
+  if(cardDrag.ghost) cardDrag.ghost.remove();
+  el.style.opacity=''; document.body.classList.remove('dragging-card'); clearDropMarker();
+  cardDrag=null; cardDrop=null;
+  if(!wasDrag){ openCardRecto(id); return; }     // simple clic = éditer
+  if(drop) moveCardTo(id, drop.deckId, drop.index);
+}
+function moveCardTo(cardId, targetDeckId, targetIndex){
+  const card=project.cards.find(c=>c.id===cardId); if(!card) return;
+  project.cards=project.cards.filter(c=>c.id!==cardId);
+  card.deckId = targetDeckId || null;
+  const inDeck = c => targetDeckId ? c.deckId===targetDeckId : (!c.deckId||!project.decks.some(d=>d.id===c.deckId));
+  const deckCards=project.cards.filter(inDeck);
+  targetIndex=Math.max(0,Math.min(deckCards.length,targetIndex));
+  if(!deckCards.length) project.cards.push(card);
+  else if(targetIndex>=deckCards.length) project.cards.splice(project.cards.indexOf(deckCards[deckCards.length-1])+1,0,card);
+  else project.cards.splice(project.cards.indexOf(deckCards[targetIndex]),0,card);
+  save(); renderProject();
 }
 /* menu flottant « Déplacer » */
 let floatMenuEl=null;
@@ -1145,7 +1259,7 @@ function newCard(){
 function duplicateCard(id){
   const src=project.cards.find(c=>c.id===id); if(!src) return;
   const copy=JSON.parse(JSON.stringify(src));
-  copy.id=uid(); copy.name=src.name+' (copie)'; copy.pileNo=null; copy.modules.forEach(m=>m.id=uid());
+  copy.id=uid(); copy.name=src.name+' (copie)'; copy.modules.forEach(m=>m.id=uid());
   const i=project.cards.indexOf(src); project.cards.splice(i+1,0,copy);
   save();
   if(isEditing()){ ui.cardId=copy.id; ui.sel=null; refreshCardSelectors(); refreshStage(); renderRight(); }
@@ -1208,11 +1322,77 @@ function bindCrop(){
 function stampNow(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}`; }
 function projSlug(){ return (project.name||'projet').replace(/[^\w\-]+/g,'_'); }
-function saveJson(){
+function downloadJson(){
   const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`${projSlug()}_${stampNow()}.json`; a.click();
-  toast('Projet exporté en JSON');
+}
+async function saveJson(){
+  if(dirHandle){
+    const ok=await writeToFolder('carte-forge_manu.json');
+    if(ok){ toast('Sauvegarde manuelle ✓ (dossier)'); return; }
+    toast('Accès au dossier refusé — téléchargement à la place');
+  }
+  downloadJson(); toast('Projet exporté en JSON');
+}
+
+/* =========================================================================
+   DOSSIER DE SAUVEGARDE LOCAL (File System Access API — Chrome/Edge, https)
+   auto : carte-forge_auto.json (toutes les 10 min) · manu : carte-forge_manu.json
+   ========================================================================= */
+let dirHandle=null, autoTimer=null;
+const AUTO_MS=10*60*1000;
+function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open('carteforge',1);
+  r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function idbSet(k,v){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); })); }
+function idbGet(k){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readonly'); const g=t.objectStore('kv').get(k); g.onsuccess=()=>res(g.result); g.onerror=()=>rej(g.error); })); }
+async function writeToFolder(name){
+  if(!dirHandle) return false;
+  try{
+    if((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted'){
+      if((await dirHandle.requestPermission({mode:'readwrite'}))!=='granted') return false;
+    }
+    const fh=await dirHandle.getFileHandle(name,{create:true});
+    const w=await fh.createWritable(); await w.write(JSON.stringify(project,null,2)); await w.close();
+    return true;
+  }catch(e){ return false; }
+}
+function startAuto(){ stopAuto(); autoTimer=setInterval(async ()=>{ const ok=await writeToFolder('carte-forge_auto.json'); if(ok) toast('Sauvegarde auto ✓'); }, AUTO_MS); }
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } }
+async function chooseSaveFolder(){
+  if(!window.showDirectoryPicker){
+    showInfo('Dossier de sauvegarde indisponible',
+      "Cette fonction utilise l'API d'accès aux fichiers, disponible sur <b>Chrome / Edge</b> et sur une page servie en <b>https</b> (pas en local file://).<br><br>Sur ton hébergement GitHub, elle fonctionnera. En attendant, « Sauver JSON » télécharge le fichier normalement.");
+    return;
+  }
+  try{
+    dirHandle=await window.showDirectoryPicker({mode:'readwrite', id:'carteforge-saves'});
+    await idbSet('dir', dirHandle);
+    await writeToFolder('carte-forge_auto.json');   // 1re sauvegarde immédiate
+    startAuto(); updateFolderStatus();
+    showInfo('Dossier configuré 📁',
+      `Dossier : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Deux fichiers y seront tenus à jour :<br>• <b>carte-forge_auto.json</b> — écrasé toutes les 10 minutes<br>• <b>carte-forge_manu.json</b> — via « Sauver JSON »`);
+  }catch(e){ /* annulé par l'utilisateur */ }
+}
+async function folderMenuClick(){
+  if(!dirHandle){ chooseSaveFolder(); return; }
+  const perm=await dirHandle.queryPermission({mode:'readwrite'});
+  if(perm!=='granted'){
+    const p=await dirHandle.requestPermission({mode:'readwrite'});
+    if(p==='granted'){ startAuto(); updateFolderStatus(); await writeToFolder('carte-forge_auto.json'); toast('Dossier reconnecté 📁'); return; }
+  }
+  showInfo('Dossier de sauvegarde',
+    `Dossier actif : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>• <b>carte-forge_auto.json</b> — auto toutes les 10 min<br>• <b>carte-forge_manu.json</b> — sauvegarde manuelle`,
+    {label:'Changer de dossier', fn:()=>{ closeInfo(); chooseSaveFolder(); }});
+}
+function updateFolderStatus(){ const b=$('#mFolder'); if(b) b.textContent = dirHandle ? `📁 Dossier : ${dirHandle.name}` : '📁 Dossier de sauvegarde…'; }
+async function restoreFolder(){
+  try{
+    const h=await idbGet('dir'); if(!h) return;
+    dirHandle=h; updateFolderStatus();
+    if((await h.queryPermission({mode:'readwrite'}))==='granted') startAuto();
+  }catch(e){}
 }
 function loadJsonFile(file){
   const r=new FileReader();
@@ -1308,6 +1488,7 @@ function slotPos(L, s, kind){
   if(kind==='verso'){
     if(P.flip==='short') y = L.pg.h - y - L.chmm;   // reliure bord court → miroir vertical
     else                 x = L.pg.w - x - L.cwmm;   // reliure bord long  → miroir horizontal
+    x += (P.vOffX||0); y += (P.vOffY||0);           // calage manuel du verso (mm)
   }
   return { x, y };
 }
@@ -1382,6 +1563,7 @@ function openPrintModal(){
   $('#pgDeck').innerHTML=opts.join('');
   if(!['all','none'].includes(P.deck) && !project.decks.some(d=>d.id===P.deck)) P.deck='all';
   $('#pgDeck').value=P.deck; $('#pgFaces').value=P.faces; $('#pgFlip').value=P.flip;
+  $('#pgVX').value=P.vOffX; $('#pgVXV').textContent=P.vOffX; $('#pgVY').value=P.vOffY; $('#pgVYV').textContent=P.vOffY;
   $('#pgFormat').value=P.pageFormat; $('#pgOrient').value=P.orient;
   $('#pgMargin').value=P.pageMargin; $('#pgMarginV').textContent=P.pageMargin;
   $('#pgGap').value=P.gap; $('#pgGapV').textContent=P.gap;
@@ -1576,6 +1758,8 @@ function bind(){
   $('#pgDeck').onchange=e=>{ ensurePrint(); project.print.deck=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgFaces').onchange=e=>{ ensurePrint(); project.print.faces=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgFlip').onchange=e=>{ ensurePrint(); project.print.flip=e.target.value; printChanged(); };
+  $('#pgVX').oninput=e=>{ ensurePrint(); project.print.vOffX=+e.target.value; $('#pgVXV').textContent=e.target.value; printChanged(); };
+  $('#pgVY').oninput=e=>{ ensurePrint(); project.print.vOffY=+e.target.value; $('#pgVYV').textContent=e.target.value; printChanged(); };
   $('#pgFormat').onchange=e=>{ ensurePrint(); project.print.pageFormat=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgOrient').onchange=e=>{ ensurePrint(); project.print.orient=e.target.value; ui.ppPage=1; printChanged(); };
   $('#pgMargin').oninput=e=>{ ensurePrint(); project.print.pageMargin=+e.target.value; $('#pgMarginV').textContent=e.target.value; printChanged(); };
@@ -1596,6 +1780,7 @@ function bind(){
   $('#gearBtn').onclick=e=>{ e.stopPropagation(); gm.classList.toggle('show'); };
   document.addEventListener('click',e=>{ if(!e.target.closest('.menu-wrap')) gm.classList.remove('show'); });
   $('#mSave').onclick=()=>{ gm.classList.remove('show'); saveJson(); };
+  $('#mFolder').onclick=()=>{ gm.classList.remove('show'); folderMenuClick(); };
   $('#mOpen').onclick=()=>{ gm.classList.remove('show'); $('#loadJson').click(); };
   $('#mPng').onclick=()=>{ gm.classList.remove('show'); exportPNG(); };
   $('#mInstall').onclick=()=>{ gm.classList.remove('show'); installApp(); };
@@ -1616,6 +1801,9 @@ function bind(){
   // fenêtres maison (ask)
   $('#askOk').onclick=()=>askClose(true);
   $('#infoClose').onclick=closeInfo;
+  $('#rulesBtn').onclick=openRules;
+  $('#rulesClose').onclick=()=>$('#rulesModal').classList.remove('show');
+  bindRules();
   bindCrop();
   $('#askCancel').onclick=()=>askClose(false);
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
@@ -1672,6 +1860,35 @@ function showInfo(title, bodyHtml, action){
   $('#infoModal').classList.add('show');
 }
 function closeInfo(){ $('#infoModal').classList.remove('show'); }
+let savedRange=null;
+function rteSaveSel(){ const s=getSelection(); if(s.rangeCount && $('#rulesText').contains(s.anchorNode)) savedRange=s.getRangeAt(0).cloneRange(); }
+function rteRestoreSel(){ const ed=$('#rulesText'); ed.focus(); if(savedRange){ const s=getSelection(); s.removeAllRanges(); s.addRange(savedRange); } }
+function syncRules(){ project.rules=$('#rulesText').innerHTML; save(); }
+function rteCmd(cmd,val){ rteRestoreSel(); document.execCommand(cmd,false,val||null); rteSaveSel(); syncRules(); }
+function rteSize(px){ rteRestoreSel(); document.execCommand('fontSize',false,'7');
+  $('#rulesText').querySelectorAll('font[size="7"]').forEach(f=>{ f.removeAttribute('size'); f.style.fontSize=px+'px'; });
+  rteSaveSel(); syncRules(); }
+function openRules(){
+  const ed=$('#rulesText'); const r=project.rules||'';
+  ed.innerHTML = /<[a-z][\s\S]*>/i.test(r) ? r : r.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+  ed.setAttribute('data-ph','Écris ici les règles de ton jeu : mise en place, tour de jeu, conditions de victoire, effets des cartes…');
+  $('#rulesModal').classList.add('show'); setTimeout(()=>ed.focus(),30);
+}
+function bindRules(){
+  const ed=$('#rulesText');
+  $('#rteFont').innerHTML = FONTS.map(f=>`<option value="${f[0]}">${f[1]}</option>`).join('');
+  $('#rteSize').innerHTML = [12,14,16,18,20,24,28,32,40].map(s=>`<option value="${s}">${s} px</option>`).join('');
+  $('#rteSize').value=16;
+  ed.addEventListener('mouseup',rteSaveSel); ed.addEventListener('keyup',rteSaveSel);
+  ed.addEventListener('input',syncRules);
+  $('#rteToolbar').querySelectorAll('.rte-b').forEach(b=>{
+    b.addEventListener('mousedown',e=>e.preventDefault());   // garde la sélection
+    b.onclick=()=>rteCmd(b.dataset.cmd);
+  });
+  $('#rteFont').onchange=e=>rteCmd('fontName', e.target.value);
+  $('#rteSize').onchange=e=>rteSize(+e.target.value);
+  $('#rteColor').oninput=e=>rteCmd('foreColor', e.target.value);
+}
 async function doInstallPrompt(){
   if(!deferredPrompt) return;
   deferredPrompt.prompt(); const {outcome}=await deferredPrompt.userChoice; deferredPrompt=null;
@@ -1698,6 +1915,7 @@ function installApp(){
   if(!restore()) newProject();
   setupFaviconAndManifest();
   bind(); hydrate(); fitZoom();
+  restoreFolder();
 })();
 </script>
 </body>
