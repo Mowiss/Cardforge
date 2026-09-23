@@ -1380,18 +1380,37 @@ async function folderMenuClick(){
   const perm=await dirHandle.queryPermission({mode:'readwrite'});
   if(perm!=='granted'){
     const p=await dirHandle.requestPermission({mode:'readwrite'});
-    if(p==='granted'){ startAuto(); updateFolderStatus(); await writeToFolder('carte-forge_auto.json'); toast('Dossier reconnecté 📁'); return; }
+    if(p==='granted'){ updateFolderStatus(); await maybeReloadFromFolder(); startAuto(); toast('Dossier reconnecté 📁'); return; }
   }
   showInfo('Dossier de sauvegarde',
     `Dossier actif : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>• <b>carte-forge_auto.json</b> — auto toutes les 10 min<br>• <b>carte-forge_manu.json</b> — sauvegarde manuelle`,
     {label:'Changer de dossier', fn:()=>{ closeInfo(); chooseSaveFolder(); }});
 }
 function updateFolderStatus(){ const b=$('#mFolder'); if(b) b.textContent = dirHandle ? `📁 Dossier : ${dirHandle.name}` : '📁 Dossier de sauvegarde…'; }
+async function readFolderJson(name){
+  if(!dirHandle) return null;
+  try{ const fh=await dirHandle.getFileHandle(name); const f=await fh.getFile();
+    return { name, ts:f.lastModified, text:await f.text() }; }catch(e){ return null; }
+}
+async function maybeReloadFromFolder(){
+  if(!dirHandle) return;
+  try{ if((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted') return; }catch(e){ return; }
+  const files=(await Promise.all([readFolderJson('carte-forge_manu.json'), readFolderJson('carte-forge_auto.json')])).filter(Boolean);
+  if(!files.length) return;
+  files.sort((a,b)=>b.ts-a.ts); const newest=files[0];
+  const localTs=+(localStorage.getItem(LS+'_ts')||0);
+  if(newest.ts <= localTs+1000) return;                 // l'état local est aussi récent ou plus récent
+  try{ const obj=JSON.parse(newest.text); if(obj&&obj.cards){
+    project=obj; ui.cardId=project.cards[0].id; ui.sel=null;
+    $('#editor').classList.remove('show'); hydrate(); save();
+    toast('Projet rechargé depuis le dossier ('+(newest.name.includes('manu')?'manuel':'auto')+')');
+  }}catch(e){}
+}
 async function restoreFolder(){
   try{
     const h=await idbGet('dir'); if(!h) return;
     dirHandle=h; updateFolderStatus();
-    if((await h.queryPermission({mode:'readwrite'}))==='granted') startAuto();
+    if((await h.queryPermission({mode:'readwrite'}))==='granted'){ startAuto(); await maybeReloadFromFolder(); }
   }catch(e){}
 }
 function loadJsonFile(file){
@@ -1681,7 +1700,7 @@ function drawText(ctx,m,x,y,w,h){
    PERSISTANCE localStorage
    ========================================================================= */
 const LS='carteforge_v1';
-function save(){ try{ localStorage.setItem(LS,JSON.stringify(project)); }catch(e){} }
+function save(){ try{ localStorage.setItem(LS,JSON.stringify(project)); localStorage.setItem(LS+'_ts', Date.now()); }catch(e){} }
 function restore(){ try{ const s=localStorage.getItem(LS); if(s){ const o=JSON.parse(s); if(o&&o.cards){ project=o; ui.cardId=o.cards[0].id; return true; } } }catch(e){} return false; }
 
 /* =========================================================================
