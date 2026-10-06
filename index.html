@@ -229,6 +229,21 @@
   .dos-row{display:flex; align-items:stretch; gap:10px}
   .dos-prev{width:52px;height:72px;border-radius:6px;border:1px solid var(--line);background:#3a2f47;background-size:cover;background-position:center;flex:0 0 auto}
   .modal.print-modal{width:840px; flex:0 0 auto}
+  .modal.proj-modal{width:min(640px,96vw); flex:0 0 auto}
+  .proj-toolbar{display:flex; gap:8px; align-items:center; margin-bottom:12px}
+  .proj-list{max-height:min(60vh,460px); overflow:auto; display:flex; flex-direction:column; gap:8px}
+  .proj-row{display:flex; align-items:stretch; gap:14px; background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:12px}
+  .proj-row.current{border-color:var(--accent)}
+  .proj-thumb{width:70px; height:98px; flex:0 0 auto; border-radius:7px; background:#2a2233; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; overflow:hidden; font-size:30px}
+  .proj-thumb img{width:100%; height:100%; object-fit:cover}
+  .proj-mid{flex:1; min-width:0; display:flex; flex-direction:column; gap:6px}
+  .proj-ren{width:100%; background:transparent; border:none; border-bottom:1px solid transparent; color:var(--ink); font-weight:700; font-size:16px; font-family:"Cinzel",serif; padding:2px 0}
+  .proj-ren:focus{outline:none; border-bottom-color:var(--accent)}
+  .pr-head{color:var(--muted); font-size:12px}
+  .pr-list{list-style:none; margin:2px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:3px 14px; font-size:13px}
+  .pr-list li{display:flex; align-items:center; gap:6px}
+  .pr-list .dot{width:10px; height:10px; border-radius:50%; flex:0 0 auto}
+  .proj-acts{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
   .modal.rules-modal{width:min(700px,96vw); flex:0 0 auto}
   .rte-toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:9px 9px 0 0}
   .rte-toolbar .rte-b{width:30px; height:30px; background:var(--panel); border:1px solid var(--line); color:var(--ink); border-radius:7px; font-size:14px; display:inline-flex; align-items:center; justify-content:center}
@@ -289,6 +304,7 @@
     <div class="brand"><span class="logo">🎴</span><b>Carte Forge</b><span class="tag">atelier de cartes</span></div>
     <input id="projName" class="proj-name" placeholder="Nom du projet">
     <div class="spacer"></div>
+    <button class="btn ghost sm" id="projBtn">🗂 Projets</button>
     <button class="btn ghost sm" id="rulesBtn">📓 Règles</button>
     <button class="btn ghost sm" id="printBtn">⎙ Print</button>
     <div class="menu-wrap">
@@ -354,7 +370,12 @@
               <option value="560x960">Tarot — 70×120 mm</option>
               <option value="560x560">Carré — 70×70 mm</option>
               <option value="360x544">Mini — 45×68 mm</option>
+              <option value="custom">Personnalisé…</option>
             </select>
+          </div>
+          <div class="row" id="customSize" style="display:none">
+            <div class="field"><label>Largeur (mm)</label><input type="number" id="cardCustomW" min="20" max="300" step="1"></div>
+            <div class="field"><label>Hauteur (mm)</label><input type="number" id="cardCustomH" min="20" max="300" step="1"></div>
           </div>
         </div>
       </aside>
@@ -502,6 +523,19 @@
   </div>
 </div>
 
+<div class="modal-bg" id="projModal">
+  <div class="modal proj-modal">
+    <h3>Projets du dossier</h3>
+    <div class="proj-toolbar">
+      <button class="btn sm primary" id="projNew">＋ Nouveau projet</button>
+      <button class="btn sm" id="projThumbAuto">Vignette depuis la carte</button>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn ghost sm" id="projClose">Fermer</button>
+    </div>
+    <div class="proj-list" id="projList"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="rulesModal">
   <div class="modal rules-modal">
     <h3>Règles du jeu</h3>
@@ -591,11 +625,12 @@ function blankCard(name){
            modules:[], verso:{ image:null, useShared:true } };
 }
 function newProject(){
-  project = { name:'Nouveau projet', card:{w:504,h:704}, margin:28,
+  project = { id:uid(), name:'Nouveau projet', thumb:'', card:{w:504,h:704}, margin:28,
               print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long', vOffX:0, vOffY:0, output:'pdf' },
               sharedBack:null, rules:'', decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
+function ensureProjectMeta(){ if(!project.id) project.id=uid(); if(project.thumb===undefined) project.thumb=''; if(project.rules===undefined) project.rules=''; }
 function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true };
   const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; if(P.output===undefined) P.output='pdf'; if(P.vOffX===undefined) P.vOffX=0; if(P.vOffY===undefined) P.vOffY=0; }
 function pageDims(){ ensurePrint(); const P=project.print;
@@ -1328,9 +1363,10 @@ function downloadJson(){
   a.download=`${projSlug()}_${stampNow()}.json`; a.click();
 }
 async function saveJson(){
+  ensureProjectMeta();
   if(dirHandle){
-    const ok=await writeToFolder('carte-forge_manu.json');
-    if(ok){ toast('Sauvegarde manuelle ✓ (dossier)'); return; }
+    const ok=await writeProjectFile();
+    if(ok){ toast('Projet sauvegardé ✓ (dossier)'); return; }
     toast('Accès au dossier refusé — téléchargement à la place');
   }
   downloadJson(); toast('Projet exporté en JSON');
@@ -1338,27 +1374,29 @@ async function saveJson(){
 
 /* =========================================================================
    DOSSIER DE SAUVEGARDE LOCAL (File System Access API — Chrome/Edge, https)
-   auto : carte-forge_auto.json (toutes les 10 min) · manu : carte-forge_manu.json
+   1 fichier par projet : cf-<id>.json (cartes + paquets + règles + vignette).
+   Sauvegarde auto toutes les 10 min + « Sauver JSON » → le fichier du projet.
    ========================================================================= */
 let dirHandle=null, autoTimer=null;
 const AUTO_MS=10*60*1000;
+function projFile(id){ return 'cf-'+id+'.json'; }
 function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open('carteforge',1);
   r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
   r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function idbSet(k,v){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); })); }
 function idbGet(k){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readonly'); const g=t.objectStore('kv').get(k); g.onsuccess=()=>res(g.result); g.onerror=()=>rej(g.error); })); }
-async function writeToFolder(name){
-  if(!dirHandle) return false;
-  try{
-    if((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted'){
-      if((await dirHandle.requestPermission({mode:'readwrite'}))!=='granted') return false;
-    }
-    const fh=await dirHandle.getFileHandle(name,{create:true});
-    const w=await fh.createWritable(); await w.write(JSON.stringify(project,null,2)); await w.close();
-    return true;
-  }catch(e){ return false; }
+async function ensurePerm(){ if(!dirHandle) return false;
+  try{ if((await dirHandle.queryPermission({mode:'readwrite'}))==='granted') return true;
+    return (await dirHandle.requestPermission({mode:'readwrite'}))==='granted'; }catch(e){ return false; } }
+async function writeFolderText(name,text){ if(!dirHandle||!(await ensurePerm())) return false;
+  try{ const fh=await dirHandle.getFileHandle(name,{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return true; }catch(e){ return false; } }
+async function writeProjectFile(){ ensureProjectMeta(); return writeFolderText(projFile(project.id), JSON.stringify(project,null,2)); }
+async function readFolderJson(name){
+  if(!dirHandle) return null;
+  try{ const fh=await dirHandle.getFileHandle(name); const f=await fh.getFile();
+    return { name, ts:f.lastModified, text:await f.text() }; }catch(e){ return null; }
 }
-function startAuto(){ stopAuto(); autoTimer=setInterval(async ()=>{ const ok=await writeToFolder('carte-forge_auto.json'); if(ok) toast('Sauvegarde auto ✓'); }, AUTO_MS); }
+function startAuto(){ stopAuto(); autoTimer=setInterval(async ()=>{ if(await writeProjectFile()) toast('Sauvegarde auto ✓'); }, AUTO_MS); }
 function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } }
 async function chooseSaveFolder(){
   if(!window.showDirectoryPicker){
@@ -1369,10 +1407,9 @@ async function chooseSaveFolder(){
   try{
     dirHandle=await window.showDirectoryPicker({mode:'readwrite', id:'carteforge-saves'});
     await idbSet('dir', dirHandle);
-    await writeToFolder('carte-forge_auto.json');   // 1re sauvegarde immédiate
-    startAuto(); updateFolderStatus();
+    await writeProjectFile(); startAuto(); updateFolderStatus();
     showInfo('Dossier configuré 📁',
-      `Dossier : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Deux fichiers y seront tenus à jour :<br>• <b>carte-forge_auto.json</b> — écrasé toutes les 10 minutes<br>• <b>carte-forge_manu.json</b> — via « Sauver JSON »`);
+      `Dossier : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Chaque projet y est enregistré dans son propre fichier <b>cf-….json</b> (toutes les cartes, les paquets et les règles). Sauvegarde automatique toutes les 10 min, plus « Sauver JSON ». Gère tes projets via 🗂 Projets.`);
   }catch(e){ /* annulé par l'utilisateur */ }
 }
 async function folderMenuClick(){
@@ -1383,28 +1420,18 @@ async function folderMenuClick(){
     if(p==='granted'){ updateFolderStatus(); await maybeReloadFromFolder(); startAuto(); toast('Dossier reconnecté 📁'); return; }
   }
   showInfo('Dossier de sauvegarde',
-    `Dossier actif : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>• <b>carte-forge_auto.json</b> — auto toutes les 10 min<br>• <b>carte-forge_manu.json</b> — sauvegarde manuelle`,
+    `Dossier actif : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Un fichier <b>cf-….json</b> par projet. Sauvegarde auto toutes les 10 min + « Sauver JSON ». Vois tous tes projets via 🗂 Projets.`,
     {label:'Changer de dossier', fn:()=>{ closeInfo(); chooseSaveFolder(); }});
 }
 function updateFolderStatus(){ const b=$('#mFolder'); if(b) b.textContent = dirHandle ? `📁 Dossier : ${dirHandle.name}` : '📁 Dossier de sauvegarde…'; }
-async function readFolderJson(name){
-  if(!dirHandle) return null;
-  try{ const fh=await dirHandle.getFileHandle(name); const f=await fh.getFile();
-    return { name, ts:f.lastModified, text:await f.text() }; }catch(e){ return null; }
-}
+function loadProjectObject(obj){ project=obj; ensureProjectMeta(); ui.cardId=project.cards[0].id; ui.sel=null; $('#editor').classList.remove('show'); hydrate(); save(); }
 async function maybeReloadFromFolder(){
-  if(!dirHandle) return;
+  if(!dirHandle||!project.id) return;
   try{ if((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted') return; }catch(e){ return; }
-  const files=(await Promise.all([readFolderJson('carte-forge_manu.json'), readFolderJson('carte-forge_auto.json')])).filter(Boolean);
-  if(!files.length) return;
-  files.sort((a,b)=>b.ts-a.ts); const newest=files[0];
+  const f=await readFolderJson(projFile(project.id)); if(!f) return;
   const localTs=+(localStorage.getItem(LS+'_ts')||0);
-  if(newest.ts <= localTs+1000) return;                 // l'état local est aussi récent ou plus récent
-  try{ const obj=JSON.parse(newest.text); if(obj&&obj.cards){
-    project=obj; ui.cardId=project.cards[0].id; ui.sel=null;
-    $('#editor').classList.remove('show'); hydrate(); save();
-    toast('Projet rechargé depuis le dossier ('+(newest.name.includes('manu')?'manuel':'auto')+')');
-  }}catch(e){}
+  if(f.ts <= localTs+1000) return;                 // l'état local est aussi récent ou plus récent
+  try{ const obj=JSON.parse(f.text); if(obj&&obj.cards){ loadProjectObject(obj); toast('Projet rechargé depuis le dossier'); } }catch(e){}
 }
 async function restoreFolder(){
   try{
@@ -1412,6 +1439,105 @@ async function restoreFolder(){
     dirHandle=h; updateFolderStatus();
     if((await h.queryPermission({mode:'readwrite'}))==='granted'){ startAuto(); await maybeReloadFromFolder(); }
   }catch(e){}
+}
+
+/* ---------- Gestionnaire de projets (dossier) ---------- */
+async function listProjects(){
+  const out=[]; if(!dirHandle||!(await ensurePerm())) return out;
+  try{ for await (const [name,h] of dirHandle.entries()){
+    if(h.kind==='file' && /^cf-.*\.json$/i.test(name)){
+      try{ const f=await h.getFile(); const o=JSON.parse(await f.text());
+        if(o&&o.cards) out.push({ id:o.id||name.replace(/^cf-|\.json$/g,''), name:o.name||'Projet', thumb:o.thumb||'', count:o.cards.length, ts:f.lastModified, obj:o }); }catch(_){}
+    }
+  } }catch(e){}
+  out.sort((a,b)=>b.ts-a.ts); return out;
+}
+function projRecap(o){
+  const decks=o.decks||[], cards=o.cards||[];
+  const loose=cards.filter(c=>!c.deckId||!decks.some(d=>d.id===c.deckId)).length;
+  let h=`<div class="pr-head">${decks.length} paquet(s) · ${cards.length} carte(s)</div><ul class="pr-list">`;
+  decks.forEach(d=>{ const n=cards.filter(c=>c.deckId===d.id).length;
+    h+=`<li><span class="dot" style="background:${d.color||'#888'}"></span>${escapeHtml(d.name||'Paquet')} — <b>${n}</b></li>`; });
+  if(loose) h+=`<li><span class="dot" style="background:#6b6b6b"></span>Hors paquet — <b>${loose}</b></li>`;
+  if(!decks.length && !loose) h+=`<li class="hint" style="padding:0">Vide</li>`;
+  return h+'</ul>';
+}
+async function openProjectById(id){
+  if(id===project.id){ $('#projModal').classList.remove('show'); return; }
+  if(dirHandle) await writeProjectFile();                 // sauve le projet courant avant de changer
+  const f=await readFolderJson(projFile(id)); if(!f){ toast('Projet introuvable'); return; }
+  try{ const o=JSON.parse(f.text); if(o&&o.cards){ loadProjectObject(o); startAuto(); $('#projModal').classList.remove('show'); toast('Projet ouvert : '+(o.name||'')); } }
+  catch(e){ toast('Fichier projet invalide'); }
+}
+async function newProjectFile(){
+  if(dirHandle) await writeProjectFile();                 // sauve le courant
+  newProject(); hydrate(); save();
+  if(dirHandle){ await writeProjectFile(); startAuto(); }
+  renderProjList(); toast('Nouveau projet');
+}
+async function patchProjectFile(id, patch){
+  if(id===project.id){ Object.assign(project,patch); save(); if($('#projName')) $('#projName').value=project.name; await writeProjectFile(); return; }
+  const f=await readFolderJson(projFile(id)); if(!f) return;
+  try{ const o=JSON.parse(f.text); Object.assign(o,patch); await writeFolderText(projFile(id), JSON.stringify(o,null,2)); }catch(e){}
+}
+async function duplicateProjectFile(id){
+  const f=await readFolderJson(projFile(id)); if(!f) return;
+  try{ const o=JSON.parse(f.text); o.id=uid(); o.name=(o.name||'Projet')+' (copie)';
+    await writeFolderText(projFile(o.id), JSON.stringify(o,null,2)); renderProjList(); toast('Projet dupliqué'); }catch(e){}
+}
+async function deleteProjectFile(id){
+  try{ await dirHandle.removeEntry(projFile(id)); }catch(e){}
+  if(id===project.id){
+    const list=await listProjects();
+    if(list.length) await openProjectById(list[0].id);
+    else { newProject(); hydrate(); save(); await writeProjectFile(); }
+  }
+  renderProjList();
+}
+function captureThumb(){ renderCardToCanvas(currentCard(),'recto',0.45, cv=>{
+  const d=cv.toDataURL('image/jpeg',0.8); patchProjectFile(project.id,{thumb:d}).then(renderProjList); toast('Vignette générée'); }); }
+function openProjModal(){ $('#projModal').classList.add('show'); renderProjList(); }
+async function renderProjList(){
+  const host=$('#projList'); if(!host) return;
+  host.innerHTML='<div class="hint" style="padding:16px">Chargement…</div>';
+  // états : pas de dossier / accès à ré-autoriser
+  if(!dirHandle){
+    host.innerHTML='<div class="empty-note">Aucun dossier de sauvegarde configuré.<br>Les projets sont stockés dans un dossier local.</div>';
+    const b=document.createElement('button'); b.className='btn primary sm'; b.style.cssText='display:block;margin:12px auto 0';
+    b.textContent='📁 Choisir un dossier de sauvegarde'; b.onclick=()=>chooseSaveFolder().then(renderProjList);
+    host.appendChild(b); return;
+  }
+  let perm='prompt'; try{ perm=await dirHandle.queryPermission({mode:'readwrite'}); }catch(e){}
+  if(perm!=='granted'){
+    host.innerHTML=`<div class="empty-note">Dossier : <b>${escapeHtml(dirHandle.name)}</b><br>Le navigateur demande de ré-autoriser l'accès au dossier.</div>`;
+    const b=document.createElement('button'); b.className='btn primary sm'; b.style.cssText='display:block;margin:12px auto 0';
+    b.textContent='Autoriser l\'accès au dossier'; b.onclick=async()=>{ if(await ensurePerm()){ startAuto(); renderProjList(); } };
+    host.appendChild(b); return;
+  }
+  const list=await listProjects();
+  if(!list.length){ host.innerHTML='<div class="empty-note">Aucun projet dans le dossier. Clique « ＋ Nouveau projet ».</div>'; return; }
+  host.innerHTML='';
+  list.forEach(p=>{
+    const el=document.createElement('div'); el.className='proj-row'+(p.id===project.id?' current':'');
+    el.innerHTML=`
+      <div class="proj-thumb">${p.thumb?`<img src="${p.thumb}">`:'<span>🎴</span>'}</div>
+      <div class="proj-mid">
+        <input class="proj-ren" value="${escapeHtml(p.name)}">
+        ${projRecap(p.obj)}
+        <div class="proj-acts">
+          <button class="btn sm primary" data-a="open">Ouvrir</button>
+          <button class="btn sm filebtn" data-a="thumb">Vignette<input type="file" accept="image/*"></button>
+          <button class="btn sm" data-a="dup">Dupliquer</button>
+          <button class="btn sm danger" data-a="del">Suppr.</button>
+        </div>
+      </div>`;
+    el.querySelector('[data-a=open]').onclick=()=>openProjectById(p.id);
+    el.querySelector('.proj-ren').addEventListener('change',e=>patchProjectFile(p.id,{name:e.target.value}).then(renderProjList));
+    el.querySelector('[data-a=thumb] input').onchange=e=>readImage(e.target.files[0],d=>patchProjectFile(p.id,{thumb:d}).then(renderProjList));
+    el.querySelector('[data-a=dup]').onclick=()=>duplicateProjectFile(p.id);
+    el.querySelector('[data-a=del]').onclick=()=>askConfirm(`Supprimer le projet « ${p.name} » ? Le fichier sera effacé du dossier.`, ()=>deleteProjectFile(p.id));
+    host.appendChild(el);
+  });
 }
 function loadJsonFile(file){
   const r=new FileReader();
@@ -1712,12 +1838,21 @@ function openEditor(id, side){
   refreshCardSelectors(); syncLeftPanel();
   setEditSide(side||'recto');
 }
+function syncFormatSelect(){
+  const sel=$('#cardSize'); if(!sel) return;
+  const val=project.card.w+'x'+project.card.h;
+  const presets=['504x704','456x704','560x960','560x560','360x544'];
+  if(presets.includes(val)){ sel.value=val; $('#customSize').style.display='none'; }
+  else { sel.value='custom'; $('#customSize').style.display='flex';
+    $('#cardCustomW').value=Math.round(project.card.w/PX_PER_MM); $('#cardCustomH').value=Math.round(project.card.h/PX_PER_MM); }
+}
 function syncLeftPanel(){
   const c=currentCard();
   const bg=$('#bgColor'); if(bg) bg.value=c.bgColor||'#ffffff';
   const bw=$('#cardBorderW'); if(bw){ bw.value=c.borderW||0; $('#cbW').textContent=c.borderW||0; }
   const bc=$('#cardBorderColor'); if(bc) bc.value=c.borderColor||'#241c2e';
   const br=$('#cardRadius'); if(br){ br.value=c.radius||0; $('#cbR').textContent=c.radius||0; }
+  syncFormatSelect();
 }
 function closeEditor(){ $('#editor').classList.remove('show'); closeFloat(); renderProject(); }
 function setEditSide(side){
@@ -1730,8 +1865,9 @@ function setEditSide(side){
   else refreshVerso();
 }
 function hydrate(){
+  ensureProjectMeta();
   $('#projName').value=project.name;
-  $('#cardSize').value=project.card.w+'x'+project.card.h;
+  syncFormatSelect();
   ensurePrint();
   $('#margin').value=project.margin; $('#marginVal').textContent=project.margin;
   refreshCardSelectors();
@@ -1759,7 +1895,15 @@ function bind(){
   $('#cardBorderColor').oninput=e=>{ currentCard().borderColor=e.target.value; save(); refreshStage(); };
   $('#cardRadius').oninput=e=>{ currentCard().radius=+e.target.value; $('#cbR').textContent=e.target.value; save(); refreshStage(); };
   // format
-  $('#cardSize').onchange=e=>{ const [w,h]=e.target.value.split('x').map(Number); project.card={w,h}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
+  $('#cardSize').onchange=e=>{
+    if(e.target.value==='custom'){ $('#customSize').style.display='flex';
+      $('#cardCustomW').value=Math.round(project.card.w/PX_PER_MM); $('#cardCustomH').value=Math.round(project.card.h/PX_PER_MM); return; }
+    $('#customSize').style.display='none';
+    const [w,h]=e.target.value.split('x').map(Number); project.card={w,h}; save(); if(isEditing()){ refreshStage(); fitZoom(); }
+  };
+  const applyCustom=()=>{ const wmm=clamp(+$('#cardCustomW').value||63,20,400), hmm=clamp(+$('#cardCustomH').value||88,20,400);
+    project.card={w:Math.round(wmm*PX_PER_MM), h:Math.round(hmm*PX_PER_MM)}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
+  $('#cardCustomW').oninput=applyCustom; $('#cardCustomH').oninput=applyCustom;
   // marge de sécurité (dans Impression)
   $('#margin').oninput=e=>{ project.margin=+e.target.value; $('#marginVal').textContent=e.target.value; save(); if(isEditing()) refreshStage(); updatePrintInfo(); };
   // calques (ordre des modules)
@@ -1823,6 +1967,11 @@ function bind(){
   $('#rulesBtn').onclick=openRules;
   $('#rulesClose').onclick=()=>$('#rulesModal').classList.remove('show');
   bindRules();
+  // gestionnaire de projets
+  $('#projBtn').onclick=openProjModal;
+  $('#projClose').onclick=()=>$('#projModal').classList.remove('show');
+  $('#projNew').onclick=newProjectFile;
+  $('#projThumbAuto').onclick=captureThumb;
   bindCrop();
   $('#askCancel').onclick=()=>askClose(false);
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
@@ -1934,7 +2083,7 @@ function installApp(){
   if(!restore()) newProject();
   setupFaviconAndManifest();
   bind(); hydrate(); fitZoom();
-  restoreFolder();
+  (async ()=>{ await restoreFolder(); openProjModal(); })();
 })();
 </script>
 </body>
