@@ -90,6 +90,14 @@
     padding:6px 8px; border-radius:7px; max-width:220px;
   }
   .cardname{background:var(--panel-2); border:1px solid var(--line); color:var(--ink); padding:6px 8px; border-radius:7px; width:150px; font-size:13px}
+  .qtywrap{display:inline-flex; align-items:center; gap:4px; color:var(--muted); font-size:13px}
+  .cardqty{background:var(--panel-2); border:1px solid var(--line); color:var(--ink); padding:6px 4px; border-radius:7px; width:54px; font-size:13px; text-align:center}
+  .pile-qty{position:absolute; top:-9px; right:-9px; background:var(--accent); color:var(--accent-ink); font-size:12px; font-weight:800; min-width:28px; height:24px; padding:0 6px; border-radius:12px; display:flex; align-items:center; justify-content:center; z-index:4; box-shadow:0 2px 8px rgba(0,0,0,.5); border:2px solid var(--panel)}
+  /* Pile « tas » : couches décalées sous la carte = tranche épaisse */
+  .pile-card .stack-layer{position:absolute; top:0; left:0; border-radius:10px; pointer-events:none;
+    background:linear-gradient(135deg,#f6f2ea,#cfc7b8); border:1px solid rgba(0,0,0,.45)}
+  .pile-card .stack-shadow{position:absolute; top:0; left:0; border-radius:10px; pointer-events:none; box-shadow:0 12px 26px rgba(0,0,0,.6)}
+  .pile-card.stak .art{box-shadow:0 1px 3px rgba(0,0,0,.4); border:1px solid rgba(0,0,0,.35)}
   .cardname:focus{outline:none; border-color:var(--accent)}
   .zoomctl{margin-left:auto; display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px}
   .canvas{flex:1; min-height:0; overflow:auto; display:flex; align-items:center; justify-content:center; padding:30px;
@@ -218,6 +226,16 @@
     display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
   .card-tools button:hover{background:var(--accent-soft); color:#fff}
   .card-tools button.del:hover{background:rgba(229,104,111,.22); color:var(--danger)}
+  .card-tools button[data-t=sub], .card-tools button[data-t=add]{font-size:16px; font-weight:700; color:var(--ink)}
+  .card-tools .qty-v{min-width:22px; text-align:center; font-size:13px; font-weight:700; color:var(--accent); align-self:center}
+  .card-tools .tsep{width:1px; align-self:stretch; background:var(--line); margin:3px 3px}
+  .name-sugg{position:fixed; z-index:400; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:4px;
+    box-shadow:0 14px 36px rgba(0,0,0,.5); max-height:260px; overflow:auto; min-width:180px; display:none}
+  .name-sugg.show{display:block}
+  .name-sugg button{display:flex; justify-content:space-between; gap:12px; width:100%; text-align:left; background:transparent; border:none; color:var(--ink); padding:7px 10px; border-radius:6px; font-size:13px; cursor:pointer}
+  .name-sugg button:hover, .name-sugg button.hl{background:var(--accent-soft)}
+  .name-sugg .n{color:var(--muted); font-size:12px}
+  .name-sugg .hd{color:var(--muted); font-size:11px; padding:4px 10px 2px}
   .card-tools svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .floatmenu{position:fixed; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:6px;
     min-width:170px; box-shadow:0 16px 44px rgba(0,0,0,.55); z-index:300}
@@ -325,7 +343,9 @@
     <div id="editor" class="editor">
       <header class="ed-bar">
         <button class="btn sm" id="edBack">← Projet</button>
-        <input type="text" id="cardName" class="cardname" placeholder="Nom de la carte">
+        <input type="text" id="cardName" class="cardname" placeholder="Nom de la carte" autocomplete="off">
+        <div class="name-sugg" id="nameSugg"></div>
+        <label class="qtywrap" title="Nombre d'exemplaires de cette carte dans le paquet">×<input type="number" id="cardQty" class="cardqty" min="1" max="999" value="1"></label>
         <div class="spacer"></div>
         <div class="layerctl" id="layerctl">
           <button class="btn sm" id="layerDown" title="Reculer le module sous les autres">▽ Calque ↓</button>
@@ -362,20 +382,33 @@
         </div>
         <div class="sec">
           <h3>Format</h3>
-          <div class="field">
-            <label>Format de carte</label>
-            <select id="cardSize">
-              <option value="504x704">Poker — 63×88 mm</option>
-              <option value="456x704">Bridge — 57×88 mm</option>
-              <option value="560x960">Tarot — 70×120 mm</option>
-              <option value="560x560">Carré — 70×70 mm</option>
-              <option value="360x544">Mini — 45×68 mm</option>
-              <option value="custom">Personnalisé…</option>
-            </select>
+          <div class="field"><label>Forme</label>
+            <div class="seg" id="cardShape">
+              <button data-v="rect">Rectangulaire</button>
+              <button data-v="round">Ronde</button>
+            </div>
           </div>
-          <div class="row" id="customSize" style="display:none">
-            <div class="field"><label>Largeur (mm)</label><input type="number" id="cardCustomW" min="20" max="300" step="1"></div>
-            <div class="field"><label>Hauteur (mm)</label><input type="number" id="cardCustomH" min="20" max="300" step="1"></div>
+          <div id="rectFields">
+            <div class="field">
+              <label>Format de carte</label>
+              <select id="cardSize">
+                <option value="504x704">Poker — 63×88 mm</option>
+                <option value="456x704">Bridge — 57×88 mm</option>
+                <option value="560x960">Tarot — 70×120 mm</option>
+                <option value="560x560">Carré — 70×70 mm</option>
+                <option value="360x544">Mini — 45×68 mm</option>
+                <option value="custom">Personnalisé…</option>
+              </select>
+            </div>
+            <div class="row" id="customSize" style="display:none">
+              <div class="field"><label>Largeur (mm)</label><input type="number" id="cardCustomW" min="20" max="300" step="1"></div>
+              <div class="field"><label>Hauteur (mm)</label><input type="number" id="cardCustomH" min="20" max="300" step="1"></div>
+            </div>
+          </div>
+          <div id="roundFields" style="display:none">
+            <div class="field"><label>Rayon (mm) : <span id="cardRadiusMmV">32</span></label>
+              <input type="range" id="cardRadiusMm" min="15" max="80" step="1" value="32"></div>
+            <p class="hint">Carte ronde — le diamètre vaut deux fois le rayon.</p>
           </div>
         </div>
       </aside>
@@ -620,17 +653,17 @@ let project = null;
 let ui = { editSide:'recto', cardId:null, sel:null, zoom:1, deckFilter:null, editingDeck:null, deckDos:null };
 
 function blankCard(name){
-  return { id:uid(), name:name||'Carte', deckId:null, bg:null, bgColor:'#ffffff',
+  return { id:uid(), name:name||'Carte', qty:1, deckId:null, bg:null, bgColor:'#ffffff',
            borderW:0, borderColor:'#241c2e', radius:0,
            modules:[], verso:{ image:null, useShared:true } };
 }
 function newProject(){
-  project = { id:uid(), name:'Nouveau projet', thumb:'', card:{w:504,h:704}, margin:28,
+  project = { id:uid(), name:'Nouveau projet', thumb:'', card:{w:504,h:704,shape:'rect'}, margin:28,
               print:{ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true, deck:'all', faces:'recto', flip:'long', vOffX:0, vOffY:0, output:'pdf' },
               sharedBack:null, rules:'', decks:[], cards:[ blankCard('Carte 1') ] };
   ui.cardId = project.cards[0].id;
 }
-function ensureProjectMeta(){ if(!project.id) project.id=uid(); if(project.thumb===undefined) project.thumb=''; if(project.rules===undefined) project.rules=''; }
+function ensureProjectMeta(){ if(!project.id) project.id=uid(); if(project.thumb===undefined) project.thumb=''; if(project.rules===undefined) project.rules=''; if(!project.card.shape) project.card.shape='rect'; (project.cards||[]).forEach(c=>{ if(c.qty===undefined) c.qty=1; }); }
 function ensurePrint(){ if(!project.print) project.print={ pageFormat:'A4', orient:'portrait', pageMargin:10, gap:3, cropMarks:true };
   const P=project.print; if(P.deck===undefined) P.deck='all'; if(P.faces===undefined) P.faces='recto'; if(P.flip===undefined) P.flip='long'; if(P.output===undefined) P.output='pdf'; if(P.vOffX===undefined) P.vOffX=0; if(P.vOffY===undefined) P.vOffY=0; }
 function pageDims(){ ensurePrint(); const P=project.print;
@@ -697,7 +730,7 @@ function buildStage(stage, card, interactive){
   const W=project.card.w, H=project.card.h;
   stage.style.width=W+'px'; stage.style.height=H+'px';
   stage.style.background=card.bgColor||'#fff';
-  stage.style.borderRadius=(card.radius||0)+'px';
+  stage.style.borderRadius = (project.card.shape==='round') ? '50%' : (card.radius||0)+'px';
   // fond image
   if(card.bg){ const bg=document.createElement('div'); bg.className='bg'; bg.style.backgroundImage=`url(${card.bg})`; stage.appendChild(bg); }
   // modules triés par z
@@ -718,7 +751,7 @@ function buildStage(stage, card, interactive){
   // bordure de la carte (cadre)
   const cbw=card.borderW||0;
   if(cbw>0){ const fr=document.createElement('div'); fr.className='cardframe';
-    fr.style.border=`${cbw}px solid ${card.borderColor||'#241c2e'}`; fr.style.borderRadius=(card.radius||0)+'px'; stage.appendChild(fr); }
+    fr.style.border=`${cbw}px solid ${card.borderColor||'#241c2e'}`; fr.style.borderRadius=(project.card.shape==='round')?'50%':(card.radius||0)+'px'; stage.appendChild(fr); }
   // guide de marge par-dessus
   if(interactive){
     const g=document.createElement('div'); g.className='margin-guide';
@@ -1030,6 +1063,9 @@ function renderVersoPanel(){
    VUE PROJET — paquets en piles battues
    ========================================================================= */
 const THUMB_W=120, PILE_STEP=42;
+const STACK_GAP=26, STACK_DEPTH_MAX=16, STACK_LAYERS_MAX=7;
+// épaisseur de la tranche selon le nombre d'exemplaires (2 → fin, 10+ → épais)
+function stackDepth(q){ return Math.round(Math.min(STACK_DEPTH_MAX, 4 + Math.log2(q)*4)); }
 const ICONS={
   plus:`<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
   edit:`<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
@@ -1059,7 +1095,7 @@ function renderProject(){
     head.innerHTML =
       `<span class="dot" style="background:${d?d.color:'#6b6b6b'}"></span>`+
       `<span class="dname">${d?escapeHtml(d.name):'Hors paquet'}</span>`+
-      `<span class="dcount">${row.cards.length} carte(s)</span>`+
+      `<span class="dcount">${groupCards(row.cards).length} carte(s) · ${row.cards.reduce((s,c)=>s+(c.qty||1),0)} ex.</span>`+
       `<span class="grow"></span>`+
       `<button class="ic" data-a="add" title="Ajouter une carte">${ICONS.plus}</button>`+
       (d?`<button class="ic" data-a="copy" title="Copier le paquet">${ICONS.copy}</button>
@@ -1078,9 +1114,12 @@ function renderProject(){
     const hasDos = !!(d && d.back);
     const off = hasDos ? 1 : 0;                 // décalage : le dos ouvre la pile
     pile.dataset.off=off;
-    const total = row.cards.length + off;
+    const groups = groupCards(row.cards);
+    const total = groups.length + off;
     if(total===0){ pile.classList.add('empty'); pile.textContent='Aucune carte — glisse-en une ici ou clique sur ＋.'; }
-    else pile.style.height=(thumbH+96)+'px';
+    else pile.style.height=(thumbH+96+STACK_DEPTH_MAX)+'px';
+    let cursorX = off ? STEP : 0;               // position horizontale courante (les piles prennent plus de place)
+    let prevStak = false, prevRight = off ? THUMB_W : 0;
 
     if(hasDos){
       const {rot,jit}=hashRot('dos-'+d.id);
@@ -1096,39 +1135,74 @@ function renderProject(){
       pile.appendChild(pc);
     }
 
-    row.cards.forEach((c,i)=>{
+    groups.forEach((g,i)=>{
+      const c=g.cards[0];                        // carte représentative de la pile
+      const ids=g.cards.map(x=>x.id);
       const idx=i+off;
       const {rot,jit}=hashRot(c.id);
-      const pc=document.createElement('div'); pc.className='pile-card'; pc.dataset.cardid=c.id;
-      pc.style.left=(idx*STEP)+'px'; const baseZ=idx+1; pc.style.zIndex=baseZ;
-      pc.style.setProperty('--rot',rot+'deg'); pc.style.setProperty('--jit',jit+'px');
+      const qty=g.count, isStak=qty>1;
+      const depth = isStak ? stackDepth(qty) : 0;       // épaisseur de la tranche (px)
+      // les piles sont détachées des cartes voisines : espace franc avant et après
+      if((i>0 || off) && (isStak || prevStak)) cursorX = Math.max(cursorX, prevRight + STACK_GAP);
+      const left=cursorX;
+      prevRight = left + thumbW + depth;
+      const pc=document.createElement('div'); pc.className='pile-card'+(isStak?' stak':''); pc.dataset.cardid=c.id;
+      pc.style.left=left+'px'; pc.dataset.left=left; pc.dataset.w=thumbW+depth;
+      const baseZ=idx+1; pc.style.zIndex=baseZ;
+      // une pile reste droite (pas de rotation aléatoire) pour bien lire le tas
+      pc.style.setProperty('--rot',(isStak?0:rot)+'deg'); pc.style.setProperty('--jit',(isStak?0:jit)+'px');
       pc.addEventListener('mouseenter',()=>{ if(!cardDrag) pc.style.zIndex=9999; });
       pc.addEventListener('mouseleave',()=>{ if(!cardDrag) pc.style.zIndex=baseZ; });
+      cursorX += isStak ? (thumbW + depth + 10) : STEP;
+      prevStak = isStak;
 
+      if(isStak){
+        // couches empilées : de la plus profonde (décalée en bas-droite) à la plus proche
+        const layers=Math.min(qty-1, STACK_LAYERS_MAX);
+        const sh=document.createElement('div'); sh.className='stack-shadow';
+        sh.style.width=thumbW+'px'; sh.style.height=thumbH+'px'; sh.style.transform=`translate(${depth}px,${depth}px)`;
+        pc.appendChild(sh);
+        for(let k=layers;k>=1;k--){
+          const off=Math.round(depth*k/layers);
+          const ly=document.createElement('div'); ly.className='stack-layer';
+          ly.style.width=thumbW+'px'; ly.style.height=thumbH+'px';
+          ly.style.transform=`translate(${off}px,${off}px)`;
+          ly.style.filter=`brightness(${1-0.05*k})`;
+          pc.appendChild(ly);
+        }
+      }
       const art=document.createElement('div'); art.className='art'; art.style.width=thumbW+'px'; art.style.height=thumbH+'px';
       const inner=document.createElement('div'); inner.className='stage'; art.appendChild(inner);
       buildStage(inner,c,false); inner.style.transform=`scale(${thumbW/project.card.w})`;
       pc.appendChild(art);
 
-      const nm=document.createElement('div'); nm.className='pile-name'; nm.textContent=c.name; pc.appendChild(nm);
+      if(qty>1){ const q=document.createElement('div'); q.className='pile-qty'; q.textContent='×'+qty; pc.appendChild(q); }
+      const nm=document.createElement('div'); nm.className='pile-name'; nm.textContent=c.name+(qty>1?' ×'+qty:''); pc.appendChild(nm);
 
       const tools=document.createElement('div'); tools.className='card-tools';
       tools.innerHTML=
+        `<button data-t="sub" title="Retirer un exemplaire">−</button>`+
+        `<span class="qty-v">${qty}</span>`+
+        `<button data-t="add" title="Ajouter un exemplaire">＋</button>`+
+        `<span class="tsep"></span>`+
         `<button data-t="edit" title="Modifier le recto">${ICONS.edit}</button>`+
-        `<button data-t="copy" title="Copier la carte">${ICONS.copy}</button>`+
-        `<button data-t="move" title="Déplacer vers un paquet">${ICONS.move}</button>`+
-        `<button data-t="del" class="del" title="Supprimer">${ICONS.del}</button>`;
+        `<button data-t="copy" title="Copier la carte (nouveau nom)">${ICONS.copy}</button>`+
+        `<button data-t="move" title="Déplacer la pile vers un paquet">${ICONS.move}</button>`+
+        `<button data-t="del" class="del" title="Supprimer la pile">${ICONS.del}</button>`;
+      tools.querySelector('[data-t=sub]').onclick =e=>{ e.stopPropagation(); stackSub(g); };
+      tools.querySelector('[data-t=add]').onclick =e=>{ e.stopPropagation(); stackAdd(g); };
       tools.querySelector('[data-t=edit]').onclick=e=>{ e.stopPropagation(); openCardRecto(c.id); };
       tools.querySelector('[data-t=copy]').onclick=e=>{ e.stopPropagation(); duplicateCard(c.id); };
-      tools.querySelector('[data-t=move]').onclick=e=>{ e.stopPropagation(); showMoveMenu(c,e.currentTarget); };
-      tools.querySelector('[data-t=del]').onclick =e=>{ e.stopPropagation(); askConfirm('Supprimer cette carte ?', ()=>deleteCard(c.id)); };
+      tools.querySelector('[data-t=move]').onclick=e=>{ e.stopPropagation(); showMoveMenu(g.cards,e.currentTarget); };
+      tools.querySelector('[data-t=del]').onclick =e=>{ e.stopPropagation();
+        askConfirm(qty>1?`Supprimer la pile « ${c.name} » (${qty} exemplaires) ?`:'Supprimer cette carte ?', ()=>deleteCards(ids)); };
       pc.appendChild(tools);
 
-      pc.addEventListener('pointerdown',e=>{ if(e.target.closest('.card-tools')) return; if(e.button) return; startCardDrag(e,c.id,pc); });
+      pc.addEventListener('pointerdown',e=>{ if(e.target.closest('.card-tools')) return; if(e.button) return; startCardDrag(e,ids,pc); });
       pile.appendChild(pc);
     });
 
-    if(total) pile.style.width=((total-1)*STEP+thumbW+10)+'px';
+    if(total){ const lastW = prevStak ? 0 : (thumbW - STEP); pile.style.width=(cursorX + lastW + 14)+'px'; }
     scroll.appendChild(pile); rowEl.appendChild(scroll); cont.appendChild(rowEl);
   });
 }
@@ -1137,10 +1211,34 @@ function newCardInDeck(deckId){
   const c=blankCard('Carte '+(project.cards.length+1)); c.deckId=deckId||null;
   project.cards.push(c); save(); renderProject(); openEditor(c.id,'recto'); toast('Carte ajoutée');
 }
-/* ---------- Drag-n-drop des cartes (réordonner + changer de paquet) ---------- */
+/* ---------- Piles (stak) : cartes de même nom regroupées ---------- */
+function nameKey(n){ return (n||'').trim().toLowerCase(); }
+function groupCards(cards){
+  const map=new Map(), out=[];
+  cards.forEach(c=>{ const k=nameKey(c.name)||('#'+c.id);
+    let g=map.get(k); if(!g){ g={key:k, cards:[], count:0}; map.set(k,g); out.push(g); }
+    g.cards.push(c); g.count+=Math.max(1,c.qty||1); });
+  return out;
+}
+function stackAdd(g){ const c=g.cards[0]; c.qty=Math.min(999,(c.qty||1)+1); save(); renderProject(); }
+function stackSub(g){
+  if(g.count<=1) return;
+  const withQty=[...g.cards].reverse().find(c=>(c.qty||1)>1);
+  if(withQty) withQty.qty--;
+  else { const last=g.cards[g.cards.length-1]; project.cards=project.cards.filter(c=>c.id!==last.id); }
+  save(); renderProject();
+}
+function deleteCards(ids){
+  const rest=project.cards.filter(c=>!ids.includes(c.id));
+  if(!rest.length){ toast('Il faut au moins une carte'); return; }
+  project.cards=rest; if(ids.includes(ui.cardId)) ui.cardId=rest[0].id;
+  save(); renderProject();
+}
+
+/* ---------- Drag-n-drop des piles (réordonner + changer de paquet) ---------- */
 let cardDrag=null, cardDrop=null;
-function startCardDrag(e,id,el){
-  cardDrag={ id, el, sx:e.clientX, sy:e.clientY, moved:false, ghost:null, offx:0, offy:0 };
+function startCardDrag(e,ids,el){
+  cardDrag={ ids, id:ids[0], el, sx:e.clientX, sy:e.clientY, moved:false, ghost:null, offx:0, offy:0 };
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
   el.addEventListener('pointermove',onCardDragMove);
   el.addEventListener('pointerup',onCardDragUp);
@@ -1174,13 +1272,18 @@ function updateDropTarget(x,y){
   const pile=targetRow.querySelector('.pile'); const off=+(pile.dataset.off||0);
   const deckId = targetRow.dataset.deck || null;
   const cardEls=[...pile.querySelectorAll('.pile-card:not(.dos-card)')].filter(el=>el!==cardDrag.el);
-  const pr=pile.getBoundingClientRect();
-  let index=Math.round((x-pr.left)/PILE_STEP)-off;
+  const pr=pile.getBoundingClientRect(); const lx=x-pr.left;
+  // index = nombre de piles dont le milieu est à gauche du curseur
+  let index=0;
+  cardEls.forEach(el=>{ const l=+el.dataset.left||0, w=+el.dataset.w||THUMB_W; const visW=Math.min(w, el.classList.contains('stak')?w:PILE_STEP);
+    if(lx > l + visW/2) index++; });
   index=Math.max(0,Math.min(cardEls.length,index));
   cardDrop={ deckId, index };
   targetRow.classList.add('drop-hover');
   const m=document.createElement('div'); m.className='drop-marker';
-  m.style.left=Math.max(0,(off+index)*PILE_STEP-3)+'px';
+  const markX = index<cardEls.length ? (+cardEls[index].dataset.left||0) - 8
+              : (cardEls.length ? (+cardEls[cardEls.length-1].dataset.left||0) + (+cardEls[cardEls.length-1].dataset.w||THUMB_W) + 6 : off*PILE_STEP);
+  m.style.left=Math.max(0,markX)+'px';
   m.style.height=(Math.max(pile.clientHeight,THUMB_W)-20)+'px';
   pile.appendChild(m);
 }
@@ -1190,36 +1293,40 @@ function onCardDragUp(){
   el.removeEventListener('pointermove',onCardDragMove);
   el.removeEventListener('pointerup',onCardDragUp);
   el.removeEventListener('pointercancel',onCardDragUp);
-  const wasDrag=cardDrag.moved, id=cardDrag.id, drop=cardDrop;
+  const wasDrag=cardDrag.moved, id=cardDrag.id, ids=cardDrag.ids, drop=cardDrop;
   if(cardDrag.ghost) cardDrag.ghost.remove();
   el.style.opacity=''; document.body.classList.remove('dragging-card'); clearDropMarker();
   cardDrag=null; cardDrop=null;
   if(!wasDrag){ openCardRecto(id); return; }     // simple clic = éditer
-  if(drop) moveCardTo(id, drop.deckId, drop.index);
+  if(drop) moveCardsTo(ids, drop.deckId, drop.index);
 }
-function moveCardTo(cardId, targetDeckId, targetIndex){
-  const card=project.cards.find(c=>c.id===cardId); if(!card) return;
-  project.cards=project.cards.filter(c=>c.id!==cardId);
-  card.deckId = targetDeckId || null;
+// déplace un ensemble de cartes (une pile) vers un paquet, à la position de pile « groupIndex »
+function moveCardsTo(ids, targetDeckId, groupIndex){
+  const moving=ids.map(id=>project.cards.find(c=>c.id===id)).filter(Boolean); if(!moving.length) return;
+  project.cards=project.cards.filter(c=>!ids.includes(c.id));
+  moving.forEach(c=>c.deckId=targetDeckId||null);
   const inDeck = c => targetDeckId ? c.deckId===targetDeckId : (!c.deckId||!project.decks.some(d=>d.id===c.deckId));
   const deckCards=project.cards.filter(inDeck);
-  targetIndex=Math.max(0,Math.min(deckCards.length,targetIndex));
-  if(!deckCards.length) project.cards.push(card);
-  else if(targetIndex>=deckCards.length) project.cards.splice(project.cards.indexOf(deckCards[deckCards.length-1])+1,0,card);
-  else project.cards.splice(project.cards.indexOf(deckCards[targetIndex]),0,card);
+  const groups=groupCards(deckCards);
+  groupIndex=Math.max(0,Math.min(groups.length,groupIndex));
+  if(!deckCards.length) project.cards.push(...moving);
+  else if(groupIndex>=groups.length) project.cards.splice(project.cards.indexOf(deckCards[deckCards.length-1])+1,0,...moving);
+  else project.cards.splice(project.cards.indexOf(groups[groupIndex].cards[0]),0,...moving);
   save(); renderProject();
 }
+function moveCardTo(cardId, targetDeckId, targetIndex){ moveCardsTo([cardId], targetDeckId, targetIndex); }
 /* menu flottant « Déplacer » */
 let floatMenuEl=null;
 function closeFloat(){ if(floatMenuEl){ floatMenuEl.remove(); floatMenuEl=null; document.removeEventListener('click',closeFloat); } }
-function showMoveMenu(card,anchor){
+function showMoveMenu(cardOrList,anchor){
   closeFloat();
+  const list=Array.isArray(cardOrList)?cardOrList:[cardOrList];
   const m=document.createElement('div'); m.className='floatmenu';
   const targets=[{id:null,name:'Hors paquet',color:'#6b6b6b'}].concat(project.decks.map(d=>({id:d.id,name:d.name,color:d.color})));
-  targets.filter(t=>t.id!==(card.deckId||null)).forEach(t=>{
+  targets.filter(t=>t.id!==(list[0].deckId||null)).forEach(t=>{
     const b=document.createElement('button');
     b.innerHTML=`<span class="dot" style="background:${t.color}"></span>${escapeHtml(t.name)}`;
-    b.onclick=ev=>{ ev.stopPropagation(); card.deckId=t.id; save(); closeFloat(); renderProject(); toast(`Déplacée vers « ${t.name} »`); };
+    b.onclick=ev=>{ ev.stopPropagation(); closeFloat(); moveCardsTo(list.map(c=>c.id), t.id, 1e9); toast(`Déplacée vers « ${t.name} »`); };
     m.appendChild(b);
   });
   if(!m.children.length){ const b=document.createElement('button'); b.textContent='Aucun autre paquet'; b.disabled=true; m.appendChild(b); }
@@ -1285,7 +1392,31 @@ function refreshCardSelectors(){
   const opts=project.cards.map(c=>`<option value="${c.id}" ${c.id===ui.cardId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
   const cs=$('#cardSelect'); if(cs) cs.innerHTML=opts;
   const cn=$('#cardName'); if(cn) cn.value=currentCard().name;
+  const cq=$('#cardQty'); if(cq) cq.value=currentCard().qty||1;
 }
+/* ---------- Suggestions de noms : uniquement les noms déjà existants dans le projet ---------- */
+function existingNames(){
+  const cur=currentCard(); const map=new Map();
+  project.cards.forEach(c=>{ if(c.id===cur.id) return; const n=(c.name||'').trim(); if(!n) return;
+    const k=nameKey(n); const e=map.get(k)||{name:n,count:0}; e.count+=Math.max(1,c.qty||1); map.set(k,e); });
+  return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+}
+function showNameSugg(filterText){
+  const box=$('#nameSugg'), inp=$('#cardName'); if(!box||!inp) return;
+  const q=nameKey(filterText||'');
+  let list=existingNames();
+  if(q) list=list.filter(e=>nameKey(e.name).includes(q) && nameKey(e.name)!==q);
+  if(!list.length){ box.classList.remove('show'); return; }
+  box.innerHTML='<div class="hd">Rejoindre une pile existante</div>'+
+    list.map(e=>`<button data-n="${escapeHtml(e.name)}"><span>${escapeHtml(e.name)}</span><span class="n">×${e.count}</span></button>`).join('');
+  box.querySelectorAll('button').forEach(b=>{
+    b.addEventListener('mousedown',ev=>ev.preventDefault());
+    b.onclick=()=>{ inp.value=b.dataset.n; currentCard().name=b.dataset.n; save(); box.classList.remove('show'); toast('Ajoutée à la pile « '+b.dataset.n+' »'); };
+  });
+  const r=inp.getBoundingClientRect(); box.style.left=r.left+'px'; box.style.top=(r.bottom+4)+'px'; box.style.minWidth=Math.max(180,r.width)+'px';
+  box.classList.add('show');
+}
+function hideNameSugg(){ const b=$('#nameSugg'); if(b) b.classList.remove('show'); }
 function isEditing(){ return $('#editor').classList.contains('show'); }
 function newCard(){
   const c=blankCard('Carte '+(project.cards.length+1));
@@ -1566,7 +1697,7 @@ async function renderCardToCanvas(card, side, scale, done){
   const ctx=cv.getContext('2d'); ctx.scale(scale,scale);
   const rad=card.radius||0;
   // découpe arrondie de la carte (coins transparents)
-  ctx.save(); roundRect(ctx,0,0,W,H,rad); ctx.clip();
+  ctx.save(); cardPath(ctx,0,0,W,H,rad); ctx.clip();
   ctx.fillStyle=card.bgColor||'#fff'; ctx.fillRect(0,0,W,H);
 
   if(side==='verso'){
@@ -1605,10 +1736,15 @@ function drawImageMod(ctx,im,x,y,w,h,m){
   const cy = y + h/2 + (m.imgY||0)/100*h;
   ctx.drawImage(im, cx-iw/2, cy-ih/2, iw, ih);
 }
+function cardPath(ctx,x,y,W,H,rad){
+  if((project.card.shape||'rect')==='round'){ const r=Math.min(W,H)/2; ctx.beginPath(); ctx.arc(x+W/2,y+H/2,r,0,Math.PI*2); ctx.closePath(); }
+  else roundRect(ctx,x,y,W,H,rad);
+}
 function strokeCardBorder(ctx,card,W,H,rad){
   const cbw=card.borderW||0; if(cbw<=0) return;
   ctx.lineWidth=cbw; ctx.strokeStyle=card.borderColor||'#241c2e';
-  roundRect(ctx, cbw/2, cbw/2, W-cbw, H-cbw, Math.max(0, rad-cbw/2)); ctx.stroke();
+  if((project.card.shape||'rect')==='round'){ const r=Math.min(W,H)/2-cbw/2; ctx.beginPath(); ctx.arc(W/2,H/2,r,0,Math.PI*2); ctx.stroke(); }
+  else { roundRect(ctx, cbw/2, cbw/2, W-cbw, H-cbw, Math.max(0, rad-cbw/2)); ctx.stroke(); }
 }
 
 /* =========================================================================
@@ -1638,10 +1774,12 @@ function slotPos(L, s, kind){
   return { x, y };
 }
 function selectedPrintCards(){
-  ensurePrint(); const dk=project.print.deck;
-  if(!dk || dk==='all') return project.cards;
-  if(dk==='none') return project.cards.filter(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId));
-  return cardsOfDeck(dk);
+  ensurePrint(); const dk=project.print.deck; let base;
+  if(!dk || dk==='all') base=project.cards;
+  else if(dk==='none') base=project.cards.filter(c=>!c.deckId||!project.decks.some(d=>d.id===c.deckId));
+  else base=cardsOfDeck(dk);
+  const out=[]; base.forEach(c=>{ const n=Math.max(1,c.qty||1); for(let i=0;i<n;i++) out.push(c); });  // N exemplaires
+  return out;
 }
 function printSheets(){
   const cards=selectedPrintCards(); const L=printLayout(); const P=project.print;
@@ -1840,6 +1978,12 @@ function openEditor(id, side){
 }
 function syncFormatSelect(){
   const sel=$('#cardSize'); if(!sel) return;
+  const round = (project.card.shape||'rect')==='round';
+  document.querySelectorAll('#cardShape button').forEach(b=>b.classList.toggle('on', b.dataset.v===(round?'round':'rect')));
+  $('#rectFields').style.display = round ? 'none' : '';
+  $('#roundFields').style.display = round ? '' : 'none';
+  const radiusField = $('#cardRadius') && $('#cardRadius').closest('.field'); if(radiusField) radiusField.style.display = round ? 'none' : '';
+  if(round){ const rmm=Math.round((project.card.w/PX_PER_MM)/2); $('#cardRadiusMm').value=rmm; $('#cardRadiusMmV').textContent=rmm; return; }
   const val=project.card.w+'x'+project.card.h;
   const presets=['504x704','456x704','560x960','560x560','360x544'];
   if(presets.includes(val)){ sel.value=val; $('#customSize').style.display='none'; }
@@ -1854,7 +1998,7 @@ function syncLeftPanel(){
   const br=$('#cardRadius'); if(br){ br.value=c.radius||0; $('#cbR').textContent=c.radius||0; }
   syncFormatSelect();
 }
-function closeEditor(){ $('#editor').classList.remove('show'); closeFloat(); renderProject(); }
+function closeEditor(){ $('#editor').classList.remove('show'); closeFloat(); hideNameSugg(); renderProject(); }
 function setEditSide(side){
   ui.editSide=side;
   document.querySelectorAll('.ed-side button').forEach(b=>b.classList.toggle('on',b.dataset.side===side));
@@ -1902,8 +2046,18 @@ function bind(){
     const [w,h]=e.target.value.split('x').map(Number); project.card={w,h}; save(); if(isEditing()){ refreshStage(); fitZoom(); }
   };
   const applyCustom=()=>{ const wmm=clamp(+$('#cardCustomW').value||63,20,400), hmm=clamp(+$('#cardCustomH').value||88,20,400);
-    project.card={w:Math.round(wmm*PX_PER_MM), h:Math.round(hmm*PX_PER_MM)}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
+    project.card={w:Math.round(wmm*PX_PER_MM), h:Math.round(hmm*PX_PER_MM), shape:'rect'}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
   $('#cardCustomW').oninput=applyCustom; $('#cardCustomH').oninput=applyCustom;
+  // forme ronde / rectangulaire
+  document.querySelectorAll('#cardShape button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.v==='round'){
+      const rmm = Math.round((Math.min(project.card.w,project.card.h)/PX_PER_MM)/2) || 32;
+      const d=Math.round(rmm*2*PX_PER_MM); project.card={w:d,h:d,shape:'round'};
+    } else { project.card.shape='rect'; }
+    save(); syncFormatSelect(); if(isEditing()){ refreshStage(); fitZoom(); }
+  });
+  $('#cardRadiusMm').oninput=e=>{ const rmm=clamp(+e.target.value||32,10,150); $('#cardRadiusMmV').textContent=e.target.value;
+    const d=Math.round(rmm*2*PX_PER_MM); project.card={w:d,h:d,shape:'round'}; save(); if(isEditing()){ refreshStage(); fitZoom(); } };
   // marge de sécurité (dans Impression)
   $('#margin').oninput=e=>{ project.margin=+e.target.value; $('#marginVal').textContent=e.target.value; save(); if(isEditing()) refreshStage(); updatePrintInfo(); };
   // calques (ordre des modules)
@@ -1914,7 +2068,12 @@ function bind(){
   // cartes / projet
   $('#btnNewCard2').onclick=newCard;
   $('#btnNewDeck').onclick=()=>openDeckModal(null);
-  $('#cardName').oninput=e=>{ currentCard().name=e.target.value; save(); };
+  $('#cardName').oninput=e=>{ currentCard().name=e.target.value; save(); showNameSugg(e.target.value); };
+  $('#cardName').addEventListener('focus',()=>{ $('#cardName').select(); showNameSugg(''); });
+  $('#cardName').addEventListener('click',()=>showNameSugg(''));
+  $('#cardName').addEventListener('blur',()=>setTimeout(hideNameSugg,120));
+  $('#cardName').addEventListener('keydown',e=>{ if(e.key==='Escape'||e.key==='Enter'){ hideNameSugg(); e.target.blur(); } });
+  $('#cardQty').oninput=e=>{ currentCard().qty=clamp(parseInt(e.target.value,10)||1,1,999); save(); };
   // impression
   $('#printBtn').onclick=openPrintModal;
   $('#printCancel').onclick=()=>$('#printModal').classList.remove('show');
