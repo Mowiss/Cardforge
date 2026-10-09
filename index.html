@@ -1488,7 +1488,10 @@ function projSlug(){ return (project.name||'projet').replace(/[^\w\-]+/g,'_'); }
 let fileHandle=null, fileName='', dirty=false;
 const CF_TYPES=[{ description:'Projet Carte Forge', accept:{'application/json':['.cf']} }];
 const fsOK = ()=>!!(window.showOpenFilePicker && window.showSaveFilePicker);
-function suggestedName(){ return (fileName || (projSlug()+'.cf')); }
+function toCfName(n){ n=(n||'').trim(); if(!n) return projSlug()+'.cf'; return /\.cf$/i.test(n) ? n : n.replace(/\.[^.\/\\]*$/,'')+'.cf'; }
+function suggestedName(){ return toCfName(fileName || projSlug()); }
+// ouvre un fichier : un .cf devient le fichier courant ; un ancien .json est importé (le prochain Enregistrer créera un .cf)
+function adoptOpenedFile(h, name){ if(/\.cf$/i.test(name)){ fileHandle=h; fileName=name; return false; } fileHandle=null; fileName=toCfName(name); return true; }
 function projectText(){ ensureProjectMeta(); return JSON.stringify(project,null,2); }
 function setDirty(v){ dirty=v; updateFileStatus(); }
 function updateFileStatus(){
@@ -1508,14 +1511,14 @@ async function openCF(){
       try{
         const [h]=await window.showOpenFilePicker({types:CF_TYPES, excludeAcceptAllOption:false, multiple:false});
         const f=await h.getFile(); const o=parseCF(await f.text());
-        fileHandle=h; fileName=f.name; loadProjectObject(o); setDirty(false); toast('Ouvert : '+f.name);
+        const imported=adoptOpenedFile(h,f.name); loadProjectObject(o); setDirty(imported); toast(imported?('Importé : '+f.name+' — Ctrl+S pour l\'enregistrer en '+fileName):('Ouvert : '+f.name));
       }catch(e){ if(e && e.name!=='AbortError') toast('Fichier .cf invalide'); }
     } else $('#loadJson').click();
   });
 }
 async function writeHandle(h){ const w=await h.createWritable(); await w.write(projectText()); await w.close(); }
 async function saveCF(){
-  if(!fileHandle) return saveAsCF();
+  if(!fileHandle || !/\.cf$/i.test(fileHandle.name||'')) return saveAsCF();
   try{ await writeHandle(fileHandle); setDirty(false); toast('Enregistré : '+fileName); }
   catch(e){ toast("Impossible d'écrire le fichier — Enregistrer sous…"); return saveAsCF(); }
 }
@@ -1523,7 +1526,7 @@ async function saveAsCF(){
   if(fsOK()){
     try{
       const h=await window.showSaveFilePicker({ suggestedName:suggestedName(), types:CF_TYPES });
-      await writeHandle(h); fileHandle=h; fileName=h.name; setDirty(false); toast('Enregistré : '+h.name);
+      await writeHandle(h); fileHandle=h; fileName=h.name; setDirty(false); toast(/\.cf$/i.test(h.name)?('Enregistré : '+h.name):('Enregistré : '+h.name+' (pense à garder l\'extension .cf)'));
     }catch(e){ if(e && e.name!=='AbortError') toast("Échec de l'enregistrement"); }
   } else {
     const blob=new Blob([projectText()],{type:'application/json'});
@@ -1536,7 +1539,7 @@ function newCF(){
 }
 function loadJsonFile(file){
   const r=new FileReader();
-  r.onload=()=>{ try{ const o=parseCF(r.result); fileHandle=null; fileName=file.name; loadProjectObject(o); setDirty(false); toast('Ouvert : '+file.name); }
+  r.onload=()=>{ try{ const o=parseCF(r.result); const imported=adoptOpenedFile(null,file.name); loadProjectObject(o); setDirty(imported); toast(imported?('Importé : '+file.name+' — Ctrl+S pour l\'enregistrer en '+fileName):('Ouvert : '+file.name)); }
     catch(e){ toast('Fichier .cf invalide'); } };
   r.readAsText(file);
 }
