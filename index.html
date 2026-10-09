@@ -150,6 +150,9 @@
     border:none; color:var(--ink); padding:9px 10px; border-radius:8px; font-size:13px}
   .menu-item:hover{background:var(--accent-soft)}
   .menu-item:disabled{opacity:.4; cursor:default}
+  .file-status{color:var(--muted); font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis}
+  .file-status.dirty{color:var(--accent)}
+  .menu-item .kbd{margin-left:auto; color:var(--muted); font-size:11px; padding-left:14px}
   .menu-sep{height:1px; background:var(--line); margin:5px 6px}
   .field{margin-bottom:10px}
   .field:last-child{margin-bottom:0}
@@ -321,22 +324,24 @@
   <header class="bar">
     <div class="brand"><span class="logo">🎴</span><b>Carte Forge</b><span class="tag">atelier de cartes</span></div>
     <input id="projName" class="proj-name" placeholder="Nom du projet">
+    <span class="file-status" id="fileStatus">Sans titre.cf</span>
     <div class="spacer"></div>
-    <button class="btn ghost sm" id="projBtn">🗂 Projets</button>
     <button class="btn ghost sm" id="rulesBtn">📓 Règles</button>
     <button class="btn ghost sm" id="printBtn">⎙ Print</button>
     <div class="menu-wrap">
       <button class="btn primary sm" id="gearBtn" title="Paramètre">⛯ Paramètre</button>
       <div class="menu" id="gearMenu">
-        <button class="menu-item" id="mSave">💾 Sauver JSON</button>
-        <button class="menu-item" id="mFolder">📁 Dossier de sauvegarde…</button>
-        <button class="menu-item" id="mOpen">📂 Ouvrir JSON</button>
+        <button class="menu-item" id="mNew">🆕 Nouveau projet</button>
+        <button class="menu-item" id="mOpen">📂 Ouvrir… <span class="kbd">Ctrl+O</span></button>
+        <button class="menu-item" id="mSave">💾 Enregistrer <span class="kbd">Ctrl+S</span></button>
+        <button class="menu-item" id="mSaveAs">💾 Enregistrer sous… <span class="kbd">Ctrl+Maj+S</span></button>
+        <div class="menu-sep"></div>
         <button class="menu-item" id="mPng">🖼️ Export PNG (carte)</button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="mInstall">⬇️ Installer l'application</button>
       </div>
     </div>
-    <input type="file" id="loadJson" accept=".json" hidden>
+    <input type="file" id="loadJson" accept=".cf,.json,application/json" hidden>
   </header>
 
   <main>
@@ -553,19 +558,6 @@
       <button class="btn sm" id="wizNext">Suivant ›</button>
       <button class="btn primary sm" id="wizGen">⎙ Générer</button>
     </div>
-  </div>
-</div>
-
-<div class="modal-bg" id="projModal">
-  <div class="modal proj-modal">
-    <h3>Projets du dossier</h3>
-    <div class="proj-toolbar">
-      <button class="btn sm primary" id="projNew">＋ Nouveau projet</button>
-      <button class="btn sm" id="projThumbAuto">Vignette depuis la carte</button>
-      <div class="spacer" style="flex:1"></div>
-      <button class="btn ghost sm" id="projClose">Fermer</button>
-    </div>
-    <div class="proj-list" id="projList"></div>
   </div>
 </div>
 
@@ -1488,196 +1480,64 @@ function bindCrop(){
 function stampNow(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}`; }
 function projSlug(){ return (project.name||'projet').replace(/[^\w\-]+/g,'_'); }
-function downloadJson(){
-  const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=`${projSlug()}_${stampNow()}.json`; a.click();
-}
-async function saveJson(){
-  ensureProjectMeta();
-  if(dirHandle){
-    const ok=await writeProjectFile();
-    if(ok){ toast('Projet sauvegardé ✓ (dossier)'); return; }
-    toast('Accès au dossier refusé — téléchargement à la place');
-  }
-  downloadJson(); toast('Projet exporté en JSON');
-}
-
 /* =========================================================================
-   DOSSIER DE SAUVEGARDE LOCAL (File System Access API — Chrome/Edge, https)
-   1 fichier par projet : cf-<id>.json (cartes + paquets + règles + vignette).
-   Sauvegarde auto toutes les 10 min + « Sauver JSON » → le fichier du projet.
+   FICHIERS .CF — Ouvrir / Enregistrer / Enregistrer sous (comme MomoCAD)
+   Chrome/Edge : vrai fichier sur le disque (File System Access API) ;
+   autres navigateurs : ouverture par sélecteur + enregistrement par téléchargement.
    ========================================================================= */
-let dirHandle=null, autoTimer=null;
-const AUTO_MS=10*60*1000;
-function projFile(id){ return 'cf-'+id+'.json'; }
-function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open('carteforge',1);
-  r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
-  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-function idbSet(k,v){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); })); }
-function idbGet(k){ return idbOpen().then(db=>new Promise((res,rej)=>{ const t=db.transaction('kv','readonly'); const g=t.objectStore('kv').get(k); g.onsuccess=()=>res(g.result); g.onerror=()=>rej(g.error); })); }
-async function ensurePerm(){ if(!dirHandle) return false;
-  try{ if((await dirHandle.queryPermission({mode:'readwrite'}))==='granted') return true;
-    return (await dirHandle.requestPermission({mode:'readwrite'}))==='granted'; }catch(e){ return false; } }
-async function writeFolderText(name,text){ if(!dirHandle||!(await ensurePerm())) return false;
-  try{ const fh=await dirHandle.getFileHandle(name,{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return true; }catch(e){ return false; } }
-async function writeProjectFile(){ ensureProjectMeta(); return writeFolderText(projFile(project.id), JSON.stringify(project,null,2)); }
-async function readFolderJson(name){
-  if(!dirHandle) return null;
-  try{ const fh=await dirHandle.getFileHandle(name); const f=await fh.getFile();
-    return { name, ts:f.lastModified, text:await f.text() }; }catch(e){ return null; }
+let fileHandle=null, fileName='', dirty=false;
+const CF_TYPES=[{ description:'Projet Carte Forge', accept:{'application/json':['.cf']} }];
+const fsOK = ()=>!!(window.showOpenFilePicker && window.showSaveFilePicker);
+function suggestedName(){ return (fileName || (projSlug()+'.cf')); }
+function projectText(){ ensureProjectMeta(); return JSON.stringify(project,null,2); }
+function setDirty(v){ dirty=v; updateFileStatus(); }
+function updateFileStatus(){
+  const name = fileName || 'Sans titre.cf';
+  document.title = (dirty?'● ':'')+name+' — Carte Forge';
+  const el=$('#fileStatus'); if(el){ el.textContent=(dirty?'● ':'')+name; el.title = dirty ? 'Modifications non enregistrées' : 'Enregistré'; el.classList.toggle('dirty',dirty); }
 }
-function startAuto(){ stopAuto(); autoTimer=setInterval(async ()=>{ if(await writeProjectFile()) toast('Sauvegarde auto ✓'); }, AUTO_MS); }
-function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } }
-async function chooseSaveFolder(){
-  if(!window.showDirectoryPicker){
-    showInfo('Dossier de sauvegarde indisponible',
-      "Cette fonction utilise l'API d'accès aux fichiers, disponible sur <b>Chrome / Edge</b> et sur une page servie en <b>https</b> (pas en local file://).<br><br>Sur ton hébergement GitHub, elle fonctionnera. En attendant, « Sauver JSON » télécharge le fichier normalement.");
-    return;
-  }
-  try{
-    dirHandle=await window.showDirectoryPicker({mode:'readwrite', id:'carteforge-saves'});
-    await idbSet('dir', dirHandle);
-    await writeProjectFile(); startAuto(); updateFolderStatus();
-    showInfo('Dossier configuré 📁',
-      `Dossier : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Chaque projet y est enregistré dans son propre fichier <b>cf-….json</b> (toutes les cartes, les paquets et les règles). Sauvegarde automatique toutes les 10 min, plus « Sauver JSON ». Gère tes projets via 🗂 Projets.`);
-  }catch(e){ /* annulé par l'utilisateur */ }
-}
-async function folderMenuClick(){
-  if(!dirHandle){ chooseSaveFolder(); return; }
-  const perm=await dirHandle.queryPermission({mode:'readwrite'});
-  if(perm!=='granted'){
-    const p=await dirHandle.requestPermission({mode:'readwrite'});
-    if(p==='granted'){ updateFolderStatus(); await maybeReloadFromFolder(); startAuto(); toast('Dossier reconnecté 📁'); return; }
-  }
-  showInfo('Dossier de sauvegarde',
-    `Dossier actif : <b>${escapeHtml(dirHandle.name)}</b>.<br><br>Un fichier <b>cf-….json</b> par projet. Sauvegarde auto toutes les 10 min + « Sauver JSON ». Vois tous tes projets via 🗂 Projets.`,
-    {label:'Changer de dossier', fn:()=>{ closeInfo(); chooseSaveFolder(); }});
-}
-function updateFolderStatus(){ const b=$('#mFolder'); if(b) b.textContent = dirHandle ? `📁 Dossier : ${dirHandle.name}` : '📁 Dossier de sauvegarde…'; }
 function loadProjectObject(obj){ project=obj; ensureProjectMeta(); ui.cardId=project.cards[0].id; ui.sel=null; $('#editor').classList.remove('show'); hydrate(); save(); }
-async function maybeReloadFromFolder(){
-  if(!dirHandle||!project.id) return;
-  try{ if((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted') return; }catch(e){ return; }
-  const f=await readFolderJson(projFile(project.id)); if(!f) return;
-  const localTs=+(localStorage.getItem(LS+'_ts')||0);
-  if(f.ts <= localTs+1000) return;                 // l'état local est aussi récent ou plus récent
-  try{ const obj=JSON.parse(f.text); if(obj&&obj.cards){ loadProjectObject(obj); toast('Projet rechargé depuis le dossier'); } }catch(e){}
+function parseCF(text){ const o=JSON.parse(text); if(!o||!Array.isArray(o.cards)||!o.cards.length) throw new Error('format'); return o; }
+function confirmDiscard(next){
+  if(!dirty){ next(); return; }
+  askConfirm('Le projet en cours a des modifications non enregistrées. Continuer quand même ?', next);
 }
-async function restoreFolder(){
-  try{
-    const h=await idbGet('dir'); if(!h) return;
-    dirHandle=h; updateFolderStatus();
-    if((await h.queryPermission({mode:'readwrite'}))==='granted'){ startAuto(); await maybeReloadFromFolder(); }
-  }catch(e){}
-}
-
-/* ---------- Gestionnaire de projets (dossier) ---------- */
-async function listProjects(){
-  const out=[]; if(!dirHandle||!(await ensurePerm())) return out;
-  try{ for await (const [name,h] of dirHandle.entries()){
-    if(h.kind==='file' && /^cf-.*\.json$/i.test(name)){
-      try{ const f=await h.getFile(); const o=JSON.parse(await f.text());
-        if(o&&o.cards) out.push({ id:o.id||name.replace(/^cf-|\.json$/g,''), name:o.name||'Projet', thumb:o.thumb||'', count:o.cards.length, ts:f.lastModified, obj:o }); }catch(_){}
-    }
-  } }catch(e){}
-  out.sort((a,b)=>b.ts-a.ts); return out;
-}
-function projRecap(o){
-  const decks=o.decks||[], cards=o.cards||[];
-  const loose=cards.filter(c=>!c.deckId||!decks.some(d=>d.id===c.deckId)).length;
-  let h=`<div class="pr-head">${decks.length} paquet(s) · ${cards.length} carte(s)</div><ul class="pr-list">`;
-  decks.forEach(d=>{ const n=cards.filter(c=>c.deckId===d.id).length;
-    h+=`<li><span class="dot" style="background:${d.color||'#888'}"></span>${escapeHtml(d.name||'Paquet')} — <b>${n}</b></li>`; });
-  if(loose) h+=`<li><span class="dot" style="background:#6b6b6b"></span>Hors paquet — <b>${loose}</b></li>`;
-  if(!decks.length && !loose) h+=`<li class="hint" style="padding:0">Vide</li>`;
-  return h+'</ul>';
-}
-async function openProjectById(id){
-  if(id===project.id){ $('#projModal').classList.remove('show'); return; }
-  if(dirHandle) await writeProjectFile();                 // sauve le projet courant avant de changer
-  const f=await readFolderJson(projFile(id)); if(!f){ toast('Projet introuvable'); return; }
-  try{ const o=JSON.parse(f.text); if(o&&o.cards){ loadProjectObject(o); startAuto(); $('#projModal').classList.remove('show'); toast('Projet ouvert : '+(o.name||'')); } }
-  catch(e){ toast('Fichier projet invalide'); }
-}
-async function newProjectFile(){
-  if(dirHandle) await writeProjectFile();                 // sauve le courant
-  newProject(); hydrate(); save();
-  if(dirHandle){ await writeProjectFile(); startAuto(); }
-  renderProjList(); toast('Nouveau projet');
-}
-async function patchProjectFile(id, patch){
-  if(id===project.id){ Object.assign(project,patch); save(); if($('#projName')) $('#projName').value=project.name; await writeProjectFile(); return; }
-  const f=await readFolderJson(projFile(id)); if(!f) return;
-  try{ const o=JSON.parse(f.text); Object.assign(o,patch); await writeFolderText(projFile(id), JSON.stringify(o,null,2)); }catch(e){}
-}
-async function duplicateProjectFile(id){
-  const f=await readFolderJson(projFile(id)); if(!f) return;
-  try{ const o=JSON.parse(f.text); o.id=uid(); o.name=(o.name||'Projet')+' (copie)';
-    await writeFolderText(projFile(o.id), JSON.stringify(o,null,2)); renderProjList(); toast('Projet dupliqué'); }catch(e){}
-}
-async function deleteProjectFile(id){
-  try{ await dirHandle.removeEntry(projFile(id)); }catch(e){}
-  if(id===project.id){
-    const list=await listProjects();
-    if(list.length) await openProjectById(list[0].id);
-    else { newProject(); hydrate(); save(); await writeProjectFile(); }
-  }
-  renderProjList();
-}
-function captureThumb(){ renderCardToCanvas(currentCard(),'recto',0.45, cv=>{
-  const d=cv.toDataURL('image/jpeg',0.8); patchProjectFile(project.id,{thumb:d}).then(renderProjList); toast('Vignette générée'); }); }
-function openProjModal(){ $('#projModal').classList.add('show'); renderProjList(); }
-async function renderProjList(){
-  const host=$('#projList'); if(!host) return;
-  host.innerHTML='<div class="hint" style="padding:16px">Chargement…</div>';
-  // états : pas de dossier / accès à ré-autoriser
-  if(!dirHandle){
-    host.innerHTML='<div class="empty-note">Aucun dossier de sauvegarde configuré.<br>Les projets sont stockés dans un dossier local.</div>';
-    const b=document.createElement('button'); b.className='btn primary sm'; b.style.cssText='display:block;margin:12px auto 0';
-    b.textContent='📁 Choisir un dossier de sauvegarde'; b.onclick=()=>chooseSaveFolder().then(renderProjList);
-    host.appendChild(b); return;
-  }
-  let perm='prompt'; try{ perm=await dirHandle.queryPermission({mode:'readwrite'}); }catch(e){}
-  if(perm!=='granted'){
-    host.innerHTML=`<div class="empty-note">Dossier : <b>${escapeHtml(dirHandle.name)}</b><br>Le navigateur demande de ré-autoriser l'accès au dossier.</div>`;
-    const b=document.createElement('button'); b.className='btn primary sm'; b.style.cssText='display:block;margin:12px auto 0';
-    b.textContent='Autoriser l\'accès au dossier'; b.onclick=async()=>{ if(await ensurePerm()){ startAuto(); renderProjList(); } };
-    host.appendChild(b); return;
-  }
-  const list=await listProjects();
-  if(!list.length){ host.innerHTML='<div class="empty-note">Aucun projet dans le dossier. Clique « ＋ Nouveau projet ».</div>'; return; }
-  host.innerHTML='';
-  list.forEach(p=>{
-    const el=document.createElement('div'); el.className='proj-row'+(p.id===project.id?' current':'');
-    el.innerHTML=`
-      <div class="proj-thumb">${p.thumb?`<img src="${p.thumb}">`:'<span>🎴</span>'}</div>
-      <div class="proj-mid">
-        <input class="proj-ren" value="${escapeHtml(p.name)}">
-        ${projRecap(p.obj)}
-        <div class="proj-acts">
-          <button class="btn sm primary" data-a="open">Ouvrir</button>
-          <button class="btn sm filebtn" data-a="thumb">Vignette<input type="file" accept="image/*"></button>
-          <button class="btn sm" data-a="dup">Dupliquer</button>
-          <button class="btn sm danger" data-a="del">Suppr.</button>
-        </div>
-      </div>`;
-    el.querySelector('[data-a=open]').onclick=()=>openProjectById(p.id);
-    el.querySelector('.proj-ren').addEventListener('change',e=>patchProjectFile(p.id,{name:e.target.value}).then(renderProjList));
-    el.querySelector('[data-a=thumb] input').onchange=e=>readImage(e.target.files[0],d=>patchProjectFile(p.id,{thumb:d}).then(renderProjList));
-    el.querySelector('[data-a=dup]').onclick=()=>duplicateProjectFile(p.id);
-    el.querySelector('[data-a=del]').onclick=()=>askConfirm(`Supprimer le projet « ${p.name} » ? Le fichier sera effacé du dossier.`, ()=>deleteProjectFile(p.id));
-    host.appendChild(el);
+async function openCF(){
+  confirmDiscard(async ()=>{
+    if(fsOK()){
+      try{
+        const [h]=await window.showOpenFilePicker({types:CF_TYPES, excludeAcceptAllOption:false, multiple:false});
+        const f=await h.getFile(); const o=parseCF(await f.text());
+        fileHandle=h; fileName=f.name; loadProjectObject(o); setDirty(false); toast('Ouvert : '+f.name);
+      }catch(e){ if(e && e.name!=='AbortError') toast('Fichier .cf invalide'); }
+    } else $('#loadJson').click();
   });
+}
+async function writeHandle(h){ const w=await h.createWritable(); await w.write(projectText()); await w.close(); }
+async function saveCF(){
+  if(!fileHandle) return saveAsCF();
+  try{ await writeHandle(fileHandle); setDirty(false); toast('Enregistré : '+fileName); }
+  catch(e){ toast("Impossible d'écrire le fichier — Enregistrer sous…"); return saveAsCF(); }
+}
+async function saveAsCF(){
+  if(fsOK()){
+    try{
+      const h=await window.showSaveFilePicker({ suggestedName:suggestedName(), types:CF_TYPES });
+      await writeHandle(h); fileHandle=h; fileName=h.name; setDirty(false); toast('Enregistré : '+h.name);
+    }catch(e){ if(e && e.name!=='AbortError') toast("Échec de l'enregistrement"); }
+  } else {
+    const blob=new Blob([projectText()],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=suggestedName(); a.click();
+    fileName=suggestedName(); setDirty(false); toast('Téléchargé : '+fileName);
+  }
+}
+function newCF(){
+  confirmDiscard(()=>{ newProject(); fileHandle=null; fileName=''; $('#editor').classList.remove('show'); hydrate(); save(); setDirty(false); toast('Nouveau projet'); });
 }
 function loadJsonFile(file){
   const r=new FileReader();
-  r.onload=()=>{ try{ const obj=JSON.parse(r.result);
-    if(!obj.cards) throw new Error('format');
-    project=obj; ui.cardId=project.cards[0].id; ui.sel=null;
-    $('#editor').classList.remove('show');
-    hydrate(); save(); toast('Projet chargé');
-  }catch(e){ toast('Fichier JSON invalide'); } };
+  r.onload=()=>{ try{ const o=parseCF(r.result); fileHandle=null; fileName=file.name; loadProjectObject(o); setDirty(false); toast('Ouvert : '+file.name); }
+    catch(e){ toast('Fichier .cf invalide'); } };
   r.readAsText(file);
 }
 
@@ -1964,7 +1824,7 @@ function drawText(ctx,m,x,y,w,h){
    PERSISTANCE localStorage
    ========================================================================= */
 const LS='carteforge_v1';
-function save(){ try{ localStorage.setItem(LS,JSON.stringify(project)); localStorage.setItem(LS+'_ts', Date.now()); }catch(e){} }
+function save(){ try{ localStorage.setItem(LS,JSON.stringify(project)); localStorage.setItem(LS+'_ts', Date.now()); }catch(e){} if(typeof setDirty==='function') setDirty(true); }
 function restore(){ try{ const s=localStorage.getItem(LS); if(s){ const o=JSON.parse(s); if(o&&o.cards){ project=o; ui.cardId=o.cards[0].id; return true; } } }catch(e){} return false; }
 
 /* =========================================================================
@@ -2101,9 +1961,16 @@ function bind(){
   const gm=$('#gearMenu');
   $('#gearBtn').onclick=e=>{ e.stopPropagation(); gm.classList.toggle('show'); };
   document.addEventListener('click',e=>{ if(!e.target.closest('.menu-wrap')) gm.classList.remove('show'); });
-  $('#mSave').onclick=()=>{ gm.classList.remove('show'); saveJson(); };
-  $('#mFolder').onclick=()=>{ gm.classList.remove('show'); folderMenuClick(); };
-  $('#mOpen').onclick=()=>{ gm.classList.remove('show'); $('#loadJson').click(); };
+  $('#mNew').onclick=()=>{ gm.classList.remove('show'); newCF(); };
+  $('#mOpen').onclick=()=>{ gm.classList.remove('show'); openCF(); };
+  $('#mSave').onclick=()=>{ gm.classList.remove('show'); saveCF(); };
+  $('#mSaveAs').onclick=()=>{ gm.classList.remove('show'); saveAsCF(); };
+  document.addEventListener('keydown',e=>{
+    if(!(e.ctrlKey||e.metaKey)) return; const k=e.key.toLowerCase();
+    if(k==='s'){ e.preventDefault(); e.shiftKey ? saveAsCF() : saveCF(); }
+    else if(k==='o'){ e.preventDefault(); openCF(); }
+  });
+  window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
   $('#mPng').onclick=()=>{ gm.classList.remove('show'); exportPNG(); };
   $('#mInstall').onclick=()=>{ gm.classList.remove('show'); installApp(); };
   $('#loadJson').onchange=e=>{ if(e.target.files[0]) loadJsonFile(e.target.files[0]); e.target.value=''; };
@@ -2127,10 +1994,6 @@ function bind(){
   $('#rulesClose').onclick=()=>$('#rulesModal').classList.remove('show');
   bindRules();
   // gestionnaire de projets
-  $('#projBtn').onclick=openProjModal;
-  $('#projClose').onclick=()=>$('#projModal').classList.remove('show');
-  $('#projNew').onclick=newProjectFile;
-  $('#projThumbAuto').onclick=captureThumb;
   bindCrop();
   $('#askCancel').onclick=()=>askClose(false);
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
@@ -2242,7 +2105,7 @@ function installApp(){
   if(!restore()) newProject();
   setupFaviconAndManifest();
   bind(); hydrate(); fitZoom();
-  (async ()=>{ await restoreFolder(); openProjModal(); })();
+  setDirty(false);
 })();
 </script>
 </body>
