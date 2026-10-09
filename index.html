@@ -90,6 +90,9 @@
     padding:6px 8px; border-radius:7px; max-width:220px;
   }
   .cardname{background:var(--panel-2); border:1px solid var(--line); color:var(--ink); padding:6px 8px; border-radius:7px; width:150px; font-size:13px}
+  .ed-bar .cardname{width:240px; flex:0 0 auto}
+  .ed-bar .cardqty{width:58px; flex:0 0 auto}
+  .layerctl .btn{white-space:nowrap}
   .qtywrap{display:inline-flex; align-items:center; gap:4px; color:var(--muted); font-size:13px}
   .cardqty{background:var(--panel-2); border:1px solid var(--line); color:var(--ink); padding:6px 4px; border-radius:7px; width:54px; font-size:13px; text-align:center}
   .pile-qty{position:absolute; top:-9px; right:-9px; background:var(--accent); color:var(--accent-ink); font-size:12px; font-weight:800; min-width:28px; height:24px; padding:0 6px; border-radius:12px; display:flex; align-items:center; justify-content:center; z-index:4; box-shadow:0 2px 8px rgba(0,0,0,.5); border:2px solid var(--panel)}
@@ -113,8 +116,15 @@
   .cardframe{position:absolute; inset:0; box-sizing:border-box; pointer-events:none; z-index:6}
   .snapline{position:absolute; background:var(--accent); z-index:9; pointer-events:none; opacity:.8}
 
-  .module{position:absolute; box-sizing:border-box; overflow:hidden; user-select:none}
-  .module .content{width:100%; height:100%; display:flex; overflow:hidden; word-break:break-word}
+  .module{position:absolute; box-sizing:border-box; overflow:hidden; user-select:none; transform-origin:center center}
+  .module .content{width:100%; height:100%; display:flex; overflow:hidden; word-break:break-word; border-radius:inherit}
+  .module.selected{overflow:visible}
+  .rot-stem{position:absolute; left:50%; top:-26px; width:2px; height:20px; margin-left:-1px; background:var(--accent); z-index:20; pointer-events:none}
+  .rot-handle{position:absolute; left:50%; top:-38px; width:16px; height:16px; margin-left:-8px; border-radius:50%;
+    background:#fff; border:2px solid var(--accent); z-index:21; cursor:grab}
+  .rot-handle:hover{background:var(--accent)}
+  .rot-stem.below{top:auto; bottom:-26px} .rot-handle.below{top:auto; bottom:-38px}
+  .rot-stem.inside{display:none} .rot-handle.inside{top:8px}
   .module .content.img{overflow:hidden}
   .module .content img.imgel{width:100%; height:100%; object-fit:cover; transform-origin:center; display:block; pointer-events:none; -webkit-user-drag:none; user-select:none}
   .module .ph{width:100%;height:100%; display:flex; align-items:center; justify-content:center;
@@ -687,6 +697,7 @@ function styleModuleEl(el, m){
   el.style.background=m.bg; el.style.borderRadius=m.radius+'px';
   el.style.border = m.borderW>0 ? `${m.borderW}px solid ${m.borderColor}` : 'none';
   el.style.opacity=m.opacity;
+  el.style.transform = m.rot ? `rotate(${m.rot}deg)` : '';
 }
 function contentEl(m){
   const c=document.createElement('div'); c.className='content';
@@ -733,9 +744,15 @@ function buildStage(stage, card, interactive){
     if(m.locked){ el.classList.add('locked'); const b=document.createElement('div'); b.className='lockbadge'; b.textContent='🔒'; el.appendChild(b); }
     if(interactive && m.id===ui.sel){
       el.classList.add('selected');
-      if(!m.locked) ['nw','ne','sw','se','n','s','e','w'].forEach(h=>{
-        const hd=document.createElement('div'); hd.className='handle '+h; hd.dataset.h=h; el.appendChild(hd);
-      });
+      if(!m.locked){
+        ['nw','ne','sw','se','n','s','e','w'].forEach(h=>{
+          const hd=document.createElement('div'); hd.className='handle '+h; hd.dataset.h=h; el.appendChild(hd);
+        });
+        // poignée au-dessus si la place existe dans la carte, sinon dessous, sinon à l'intérieur
+        const pos = m.y>=44 ? '' : (m.y+m.h <= project.card.h-44 ? ' below' : ' inside');
+        const rs=document.createElement('div'); rs.className='rot-stem'+pos; el.appendChild(rs);
+        const rh=document.createElement('div'); rh.className='rot-handle'+pos; rh.title='Faire pivoter (Maj : crans de 15°)'; el.appendChild(rh);
+      }
     }
     if(interactive) attachModuleEvents(el,m);
     stage.appendChild(el);
@@ -758,12 +775,13 @@ function buildStage(stage, card, interactive){
 let drag=null;
 function attachModuleEvents(el,m){
   el.addEventListener('pointerdown',e=>{
+    if(e.target.classList.contains('rot-handle')) return startRotate(e,el,m);
     if(e.target.classList.contains('handle')) return startResize(e,el,m);
     if(e.target.dataset && e.target.dataset.editing) return; // en édition texte
     // sélection SANS reconstruire le plateau (sinon l'élément déplacé est détruit)
     if(ui.sel!==m.id){
       ui.sel=m.id; renderRight();
-      $('#stage').querySelectorAll('.module.selected').forEach(x=>{ x.classList.remove('selected'); x.querySelectorAll('.handle').forEach(h=>h.remove()); });
+      $('#stage').querySelectorAll('.module.selected').forEach(x=>{ x.classList.remove('selected'); x.querySelectorAll('.handle,.rot-handle,.rot-stem').forEach(h=>h.remove()); });
       el.classList.add('selected');
     }
     if(m.locked) return;
@@ -823,21 +841,55 @@ function startResize(e,el,m){
 function onResize(e){
   if(!drag||drag.mode!=='resize') return;
   const p=stagePointer(e), m=drag.m, h=drag.h, MIN=24;
-  let x=drag.ox,y=drag.oy,w=drag.ow,hh=drag.oh;
-  const dx=p.x-drag.start.x, dy=p.y-drag.start.y;
-  if(h.includes('e')) w=Math.max(MIN,drag.ow+dx);
-  if(h.includes('s')) hh=Math.max(MIN,drag.oh+dy);
-  if(h.includes('w')){ w=Math.max(MIN,drag.ow-dx); x=drag.ox+(drag.ow-w); }
-  if(h.includes('n')){ hh=Math.max(MIN,drag.oh-dy); y=drag.oy+(drag.oh-hh); }
-  Object.assign(m,{x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(hh)});
+  // déplacement exprimé dans le repère du bloc (gère les blocs pivotés)
+  const a=(m.rot||0)*Math.PI/180, cos=Math.cos(a), sin=Math.sin(a);
+  const gx=p.x-drag.start.x, gy=p.y-drag.start.y;
+  const dx= gx*cos + gy*sin, dy=-gx*sin + gy*cos;
+  let L=0,R=0,T=0,B=0;                         // déplacement local de chaque bord
+  if(h.includes('e')) R=Math.max(MIN-drag.ow, dx);
+  if(h.includes('w')) L=Math.min(drag.ow-MIN, dx);
+  if(h.includes('s')) B=Math.max(MIN-drag.oh, dy);
+  if(h.includes('n')) T=Math.min(drag.oh-MIN, dy);
+  const w=drag.ow+R-L, hh=drag.oh+B-T;
+  // le centre se déplace de la moitié des bords, dans le repère pivoté
+  const lcx=(L+R)/2, lcy=(T+B)/2;
+  const cx=drag.ox+drag.ow/2 + lcx*cos - lcy*sin;
+  const cy=drag.oy+drag.oh/2 + lcx*sin + lcy*cos;
+  Object.assign(m,{x:Math.round(cx-w/2),y:Math.round(cy-hh/2),w:Math.round(w),h:Math.round(hh)});
   styleModuleEl(drag.el,m); syncPosFields(m);
+}
+function duplicateModule(m){
+  const c=currentCard(); if(!c||!m) return;
+  const copy=JSON.parse(JSON.stringify(m));
+  copy.id=uid(); copy.locked=false;
+  copy.x=m.x+16; copy.y=m.y+16;                               // léger décalage pour voir la copie
+  copy.z=Math.max(...c.modules.map(x=>x.z))+1;                // au-dessus de tout
+  c.modules.push(copy); ui.sel=copy.id; save(); refreshStage(); renderRight(); toast('Bloc dupliqué');
+}
+function startRotate(e,el,m){
+  e.stopPropagation(); el.setPointerCapture(e.pointerId);
+  const p=stagePointer(e), cx=m.x+m.w/2, cy=m.y+m.h/2;
+  drag={mode:'rotate',m,el, a0:Math.atan2(p.y-cy,p.x-cx)*180/Math.PI, r0:m.rot||0};
+  el.addEventListener('pointermove',onRotate); el.addEventListener('pointerup',endDrag);
+}
+function onRotate(e){
+  if(!drag||drag.mode!=='rotate') return;
+  const p=stagePointer(e), m=drag.m;
+  const cx=m.x+m.w/2, cy=m.y+m.h/2;
+  let ang=drag.r0 + (Math.atan2(p.y-cy, p.x-cx)*180/Math.PI - drag.a0);   // rotation relative au geste
+  ang = e.shiftKey ? Math.round(ang/15)*15 : Math.round(ang);
+  if(!e.shiftKey){ for(const s of [0,90,180,270,360,-90,-180]) if(Math.abs(ang-s)<4){ ang=s; break; } }  // aimant léger sur les angles droits
+  ang=((ang%360)+540)%360-180;                            // −180 … 180
+  m.rot=ang; styleModuleEl(drag.el,m);
+  const f=$('#f_rot'); if(f) f.value=ang; const v=$('#f_rotV'); if(v) v.textContent=ang;
 }
 function endDrag(e){
   if(!drag) return;
   clearSnap();
   drag.el.style.cursor=''; drag.el.removeEventListener('pointermove',onMove);
-  drag.el.removeEventListener('pointermove',onResize); drag.el.removeEventListener('pointerup',endDrag);
-  drag=null; save(); refreshStage();
+  drag.el.removeEventListener('pointermove',onResize); drag.el.removeEventListener('pointermove',onRotate);
+  drag.el.removeEventListener('pointerup',endDrag);
+  drag=null; save(); refreshStage(); renderRight();
 }
 function syncPosFields(m){
   ['x','y','w','h'].forEach(k=>{ const f=document.getElementById('f_'+k); if(f) f.value=Math[k=='w'||k=='h'?'round':'round'](m[k]); });
@@ -866,6 +918,15 @@ function renderRight(){
       <div class="field"><label>Largeur</label><input type="number" id="f_w" value="${Math.round(m.w)}"></div>
       <div class="field"><label>Hauteur</label><input type="number" id="f_h" value="${Math.round(m.h)}"></div>
     </div>
+    <div class="field"><label>Rotation : <span id="f_rotV">${m.rot||0}</span>°</label>
+      <div class="row" style="align-items:center">
+        <input type="range" id="f_rot" min="-180" max="180" step="1" value="${m.rot||0}" style="flex:3">
+        <button class="btn sm" id="f_rotL" title="−90°" style="flex:0 0 auto">⟲</button>
+        <button class="btn sm" id="f_rotR" title="+90°" style="flex:0 0 auto">⟳</button>
+        <button class="btn sm" id="f_rot0" title="Remettre droit" style="flex:0 0 auto">0°</button>
+      </div>
+    </div>
+    <button class="btn sm" id="dupMod" style="width:100%">⧉ Dupliquer le bloc <span class="hint" style="margin-left:6px">Ctrl+D</span></button>
   </div>`;
 
   if(isText(m)){
@@ -945,6 +1006,12 @@ function wireRight(m){
   const updRe=(patch)=>{ Object.assign(m,patch); save(); refreshStage(); renderRight(); };
   $('#lockSw').onclick=()=>{ m.locked=!m.locked; if(m.locked&&ui.sel===m.id){} save(); refreshStage(); renderRight(); };
   ['x','y','w','h'].forEach(k=>{ const f=document.getElementById('f_'+k); f.oninput=()=>upd({[k]:parseFloat(f.value)||0}); });
+  const setRot=v=>{ v=((Math.round(v)%360)+540)%360-180; m.rot=v; $('#f_rot').value=v; $('#f_rotV').textContent=v; save(); refreshStage(); };
+  $('#f_rot').oninput=e=>setRot(+e.target.value);
+  $('#f_rotL').onclick=()=>setRot((m.rot||0)-90);
+  $('#f_rotR').onclick=()=>setRot((m.rot||0)+90);
+  $('#f_rot0').onclick=()=>setRot(0);
+  $('#dupMod').onclick=()=>duplicateModule(m);
   $('#delMod').onclick=()=>{ const c=currentCard(); c.modules=c.modules.filter(x=>x.id!==m.id); ui.sel=null; save(); refreshStage(); renderRight(); };
 
   if(isText(m)){
@@ -1574,6 +1641,7 @@ async function renderCardToCanvas(card, side, scale, done){
   const mods=card.modules.slice().sort((a,b)=>a.z-b.z);
   for(const m of mods){
     ctx.save(); ctx.globalAlpha=m.opacity;
+    if(m.rot){ const cx=m.x+m.w/2, cy=m.y+m.h/2; ctx.translate(cx,cy); ctx.rotate(m.rot*Math.PI/180); ctx.translate(-cx,-cy); }
     roundRect(ctx,m.x,m.y,m.w,m.h,m.radius);
     if(m.bg!=='transparent'){ ctx.fillStyle=m.bg; ctx.fill(); }
     if(m.borderW>0){ ctx.lineWidth=m.borderW; ctx.strokeStyle=m.borderColor; ctx.stroke(); }
@@ -2002,8 +2070,10 @@ function bind(){
   $('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter') askClose(true); if(e.key==='Escape') askClose(false); });
   // clavier : suppr + flèches (seulement en édition recto)
   document.addEventListener('keydown',e=>{
-    if(!isEditing() || ui.editSide!=='recto') return; const m=selectedModule(); if(!m||m.locked) return;
+    if(!isEditing() || ui.editSide!=='recto') return; const m=selectedModule(); if(!m) return;
     const tag=document.activeElement.tagName; if(tag==='INPUT'||tag==='TEXTAREA'||document.activeElement.isContentEditable) return;
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='d'){ e.preventDefault(); duplicateModule(m); return; }
+    if(m.locked) return;
     if(e.key==='Delete'||e.key==='Backspace'){ currentCard().modules=currentCard().modules.filter(x=>x.id!==m.id); ui.sel=null; save(); refreshStage(); renderRight(); e.preventDefault(); }
     const step=e.shiftKey?10:1;
     if(e.key==='ArrowLeft'){ m.x-=step; refreshStage(); renderRight(); e.preventDefault(); }
